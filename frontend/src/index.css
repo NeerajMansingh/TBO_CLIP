@@ -16,7 +16,7 @@
   }
 
   ::selection {
-    background: rgba(232, 94, 44, 0.3);
+    background: rgba(99, 102, 241, 0.3);
     color: white;
   }
 
@@ -49,13 +49,13 @@
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm tracking-wide active:scale-95 transition-all duration-200;
-    background: linear-gradient(135deg, #e85e2c, #d94520);
-    box-shadow: 0 10px 30px rgba(232, 94, 44, 0.3);
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
   }
 
   .btn-primary:hover {
-    background: linear-gradient(135deg, #ef7c4e, #e85e2c);
-    box-shadow: 0 10px 40px rgba(232, 94, 44, 0.5);
+    background: linear-gradient(135deg, #818cf8, #6366f1);
+    box-shadow: 0 10px 40px rgba(99, 102, 241, 0.5);
   }
 
   .btn-secondary {
@@ -81,8 +81,8 @@
   }
 
   .input-field:focus {
-    border-color: rgba(232, 94, 44, 0.6);
-    box-shadow: 0 0 0 3px rgba(232, 94, 44, 0.15);
+    border-color: rgba(99, 102, 241, 0.6);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
   }
 
   .card {
@@ -102,7 +102,7 @@
 
   .chat-bubble-user {
     @apply ml-auto max-w-xs px-4 py-3 rounded-2xl rounded-tr-sm text-sm text-white shadow-md;
-    background: linear-gradient(135deg, #e85e2c, #d94520);
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
   }
 
   .chat-bubble-ai {
@@ -131,11 +131,11 @@
   .bg-mesh {
     background-color: #030712;
     background-image:
-      radial-gradient(at 40% 20%, hsla(28, 100%, 50%, 0.12) 0px, transparent 50%),
-      radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.08) 0px, transparent 50%),
-      radial-gradient(at 0% 50%, hsla(355, 100%, 60%, 0.06) 0px, transparent 50%),
-      radial-gradient(at 80% 50%, hsla(340, 100%, 76%, 0.06) 0px, transparent 50%),
-      radial-gradient(at 0% 100%, hsla(22, 100%, 50%, 0.08) 0px, transparent 50%);
+      radial-gradient(at 40% 20%, hsla(240, 100%, 50%, 0.12) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsla(280, 100%, 56%, 0.08) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsla(260, 100%, 60%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 80% 50%, hsla(300, 100%, 76%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, hsla(250, 100%, 50%, 0.08) 0px, transparent 50%);
   }
 
   .shimmer-bg {
