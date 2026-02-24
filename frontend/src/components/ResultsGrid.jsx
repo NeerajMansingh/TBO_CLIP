@@ -1,8 +1,20 @@
 import React from 'react';
-import { MapPin, Star, ArrowRight, RefreshCcw, Info } from 'lucide-react';
+import { MapPin, Star, ArrowRight, RefreshCcw, Info, SlidersHorizontal } from 'lucide-react';
 
-export default function ResultsGrid({ results, onBook, onReroll, rejectedIds }) {
+export default function ResultsGrid({ results, onBook, onReroll, onRefine, rejectedIds, originCity, travelMonth, activeVibes, setActiveVibes }) {
     if (!results || results.length === 0) return null;
+
+    const toggleVibe = (vibe) => {
+        setActiveVibes(prev =>
+            prev.includes(vibe) ? prev.filter(v => v !== vibe) : [...prev, vibe]
+        );
+    };
+
+    const applyFilters = () => {
+        if (activeVibes.length === 0) return;
+        onRefine && onRefine(activeVibes.join(', '));
+        // Keep selections visible after refinement
+    };
 
     return (
         <div className="w-full max-w-7xl mx-auto px-4 py-12 animate-fade-in flex flex-col items-center">
@@ -16,22 +28,43 @@ export default function ResultsGrid({ results, onBook, onReroll, rejectedIds }) 
                     <p className="text-gray-400">We analyzed your parameters and verified live pricing.</p>
                 </div>
 
-                {/* Fake Query Composition */}
+                {/* Transparent Query Composition Panel */}
                 <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 glass text-right">
                     <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest block mb-2">Query Composition</span>
-                    <div className="text-sm text-gray-300 font-mono">
-                        <span className="text-white font-bold">100%</span> Prompt Weights
+                    <div className="flex flex-col items-end gap-1 text-xs text-gray-300 font-mono">
+                        <div><span className="text-white font-bold">60%</span> Image Vibe Vectors</div>
+                        <div><span className="text-white font-bold">30%</span> User Semantic Prompt</div>
+                        <div><span className="text-white font-bold">10%</span> Active Filters</div>
                     </div>
                 </div>
             </div>
 
             {/* Refine Output Vibes Row */}
             <div className="w-full mb-8 p-4 bg-gray-900/40 rounded-2xl border border-gray-800/80">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-3 pl-2">Refine Output Vibes</span>
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5 pl-2">
+                        <SlidersHorizontal size={10} /> Refine Output Vibes
+                    </span>
+                    {activeVibes.length > 0 && (
+                        <button
+                            onClick={applyFilters}
+                            className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-full uppercase tracking-widest transition-colors"
+                        >
+                            Apply {activeVibes.length} Filter{activeVibes.length > 1 ? 's' : ''}
+                        </button>
+                    )}
+                </div>
                 <div className="flex flex-wrap gap-2">
-                    {['Luxury', 'Budget', 'Adventure', 'Relaxing', 'Family', 'Couple', 'Solo', 'Nature', 'City', 'Beach', 'Mountains'].map(vibe => (
-                        <button key={vibe} className="text-xs px-4 py-1.5 rounded-full border border-gray-700 text-gray-400 hover:text-white hover:border-indigo-400 hover:bg-indigo-500/10 transition-colors">
-                            {vibe}
+                    {['More Adventure', 'Stricter Budget', 'More Luxury', 'Family Friendly', 'More Nature', 'City Vibes', 'Beachfront', 'Mountain Views', 'More Couple Focus'].map(vibe => (
+                        <button
+                            key={vibe}
+                            onClick={() => toggleVibe(vibe)}
+                            className={`text-xs px-4 py-1.5 rounded-full border transition-colors ${activeVibes.includes(vibe)
+                                ? 'border-indigo-400 bg-indigo-500/20 text-indigo-200 font-semibold'
+                                : 'border-gray-700 text-gray-400 hover:text-white hover:border-indigo-400 hover:bg-indigo-500/10'
+                                }`}
+                        >
+                            {activeVibes.includes(vibe) ? '✓ ' : ''}{vibe}
                         </button>
                     ))}
                 </div>
@@ -47,7 +80,7 @@ export default function ResultsGrid({ results, onBook, onReroll, rejectedIds }) 
                             <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
 
                             <div className="absolute top-4 right-4 bg-yellow-500 text-yellow-950 font-bold text-xs px-3 py-1 rounded-full shadow-lg">
-                                {dest.match_score >= 90 ? 'Strong Match' : 'Good Match'}
+                                {dest.match_score >= 80 ? 'Strong Match' : dest.match_score >= 60 ? 'Good Match' : 'Match'} ({dest.match_score}%)
                             </div>
 
                             <div className="absolute bottom-4 left-4 right-4">
@@ -90,7 +123,7 @@ export default function ResultsGrid({ results, onBook, onReroll, rejectedIds }) 
 
                             {/* Pricing breakdown */}
                             <div className="mb-6 pt-4 border-t border-gray-800 text-sm">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-3">Estimated pricing (INR)</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-3">Estimated price range based on TBO historical data for {travelMonth} from {originCity}</p>
                                 <div className="flex justify-between items-center mb-1 text-gray-400">
                                     <span>✈️ Flights</span>
                                     <span>₹{dest.flight_price?.toLocaleString('en-IN') || "24,500"}</span>
@@ -100,9 +133,10 @@ export default function ResultsGrid({ results, onBook, onReroll, rejectedIds }) 
                                     <span>₹{dest.hotel_price?.toLocaleString('en-IN') || "12,800"}</span>
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-gray-800/50">
-                                    <span className="text-gray-300 font-medium tracking-wide">TOTAL COST</span>
+                                    <span className="text-gray-300 font-medium tracking-wide">Estimated Total</span>
                                     <span className="text-xl font-bold text-white">₹{((dest.flight_price || 24500) + (dest.hotel_price || 12800)).toLocaleString('en-IN')}</span>
                                 </div>
+                                <p className="text-[10px] text-gray-500 italic mt-2 text-right">Final prices confirmed at booking.</p>
                             </div>
 
                             {/* Book Action */}

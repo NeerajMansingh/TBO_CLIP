@@ -185,6 +185,7 @@ async def match_destination(
         "destination_photo": match["photo"],
         "tbo_id": match["tbo_id"],
         "price_per_person": match["price_per_person"],
+        "similarity_score": match.get("similarity_score", 0.0),
         "hotels": match["hotels"],
         "match_reasons": explanation["match_reasons"],
         "conversation_opener": explanation["conversation_opener"],
