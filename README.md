@@ -1,142 +1,128 @@
-# VibeTravel 🌍✈️
+# VibeTravel ✈️📸
 
-> Upload your travel inspiration photo. Get an affordable destination that matches the vibe.
+VibeTravel is an AI-powered travel discovery app. Simply upload an aesthetic travel photo you love, and our AI (CLIP embeddings + ChromaDB) will match the visual vibe to a verified destination in India!
 
-## What It Does
-
-1. User uploads a travel inspiration photo (Santorini, Bali, etc.)
-2. CLIP visual AI matches it to one of 30 Indian/budget destinations
-3. Budget filtering ensures prices fit within the user's range
-4. Gemini AI opens a conversation to refine the choice
-5. User chats to adjust preferences; the app re-searches dynamically
-6. Final booking card shows 3 hotel options + "Book on TBO" button
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Visual matching | CLIP (clip-ViT-B-32 via sentence-transformers) |
-| Vector database | ChromaDB (local, no external service) |
-| Conversation AI | Gemini 1.5 Flash |
-| Backend | FastAPI (Python) |
-| Frontend | React + Vite + Tailwind CSS |
-| TBO data | fake_tbo.py (hardcoded realistic data) |
+We then use the **TBO API** to find real-time hotel availability at your destination, and **Google Gemini** to chat with you about the location and help you book your perfect stay.
 
 ---
 
-## One-Time Setup
+## 🚀 Setting Up From Scratch
 
-### 1. Backend
+This guide assumes you are starting with a brand-new laptop and have **nothing** installed yet. Don't worry, we'll walk you through step-by-step.
 
-```bash
-cd backend/
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+### Step 1: Install Required Software (Prerequisites)
 
-### 2. Set your Gemini API key
+Before you can run this app, your computer needs to understand Python (for the backend) and JavaScript/Node (for the frontend).
 
-Edit `backend/.env`:
-```
-GEMINI_API_KEY=your_actual_key_here
-```
+1. **Install Python 3.10+**
+   - Download the installer from the [official Python website](https://www.python.org/downloads/).
+   - **CRITICAL (Windows users):** During installation, you MUST check the box that says `"Add Python to PATH"` at the very bottom of the first screen.
 
-Get a free key at: https://aistudio.google.com/app/apikey
+2. **Install Node.js (for the frontend)**
+   - Download the "LTS" (Long Term Support) version from the [official Node.js website](https://nodejs.org/).
+   - Run the installer and click "Next" through the default options.
 
-### 3. Generate destination photos
-
-```bash
-cd backend/
-# Optional: set UNSPLASH_ACCESS_KEY=your_key for real photos
-python download_destination_photos.py
-```
-
-Without an Unsplash key, colored placeholder images are generated automatically.
-
-### 4. Generate CLIP embeddings (run once)
-
-```bash
-cd backend/
-python generate_embeddings.py
-```
-
-This creates `destination_embeddings.json`. Takes ~2-3 minutes on first run (downloads CLIP model).
-
-### 5. Load embeddings into ChromaDB (run once)
-
-```bash
-cd backend/
-python load_chromadb.py
-```
-
-Creates `chroma_store/` folder. Prints a test query result to confirm it worked.
+3. **Install Git (Optional but Recommended)**
+   - If you need to clone this code from GitHub, install Git from [git-scm.com](https://git-scm.com/downloads).
 
 ---
 
-## Running the App
+### Step 2: Set Up the Backend (Python)
 
-### Start the backend
+The backend handles the AI matching and connects to the TBO Hotel API.
 
-```bash
-cd backend/
-source venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+1. **Open your terminal** (Command Prompt on Windows, Terminal on Mac/Linux) and navigate to the project folder:
+   ```bash
+   cd path/to/VibeTravel/backend
+   ```
 
-Check it's running: http://localhost:8000/health
+2. **Create a Virtual Environment** (This keeps all your Python packages organized in one folder):
+   ```bash
+   # On Mac/Linux:
+   python3 -m venv venv
+   
+   # On Windows:
+   python -m venv venv
+   ```
 
-### Start the frontend
+3. **Activate the Virtual Environment**:
+   ```bash
+   # On Mac/Linux:
+   source venv/bin/activate
+   
+   # On Windows (Command Prompt):
+   venv\Scripts\activate.bat
+   
+   # On Windows (PowerShell):
+   venv\Scripts\Activate.ps1
+   ```
+   *(You should now see `(venv)` at the beginning of your terminal line).*
 
-```bash
-cd frontend/
-npm install   # first time only
-npm run dev
-```
+4. **Install the Required Packages**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+   *(This might take a few minutes as it downloads large AI libraries like PyTorch and CLIP).*
 
-Open: http://localhost:5173
+5. **Configure API Keys (`.env` file)**:
+   - Inside the `backend/` folder, create a new file named exactly `.env` (don't forget the dot).
+   - Add your API details inside:
+     ```env
+     GEMINI_API_KEY=your_google_gemini_api_key_here
+     
+     # TBO API Credentials (Optional - app will use Mock Data if these fail)
+     TBO_API_USER=YourUsername
+     TBO_API_PASSWORD=YourPassword
+     TBO_B2B_USER=YourUsername
+     TBO_B2B_PASSWORD=YourPassword
+     ```
+
+6. **Initialize the AI Brain**:
+   Before running the app for the very first time, you must process the photos into AI numbers (embeddings). Run these **once**:
+   ```bash
+   python generate_embeddings.py
+   python load_chromadb.py
+   ```
+
+7. **Start the Backend Server**:
+   ```bash
+   uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+   *Leave this terminal window open!*
 
 ---
 
-## Demo Script (60 seconds)
+### Step 3: Set Up the Frontend (React / Vite)
 
-1. Open http://localhost:5173 — Upload Screen appears
-2. Drag & drop a Santorini photo into the upload zone
-3. Enter budget: **₹40,000** → dates: Nov 15–22 → click **Find My Match**
-4. Loading screen shows 3 animated steps (CLIP → ChromaDB → TBO)
-5. Match appears: **Pondicherry**, ₹14,000/person, reasons: coastal · whitewashed architecture · romantic
-6. AI: *"Your photo has a quiet romantic coastal feel. Is the beach the priority or the old-town atmosphere?"*
-7. Type: **"I want something more mountainous"**
-8. Left panel smoothly updates → Coorg or Manali
-9. Type: **"This looks perfect!"**
-10. Booking screen: 3 hotel cards + **Book on TBO** button
+The frontend is the beautiful user interface you see in your browser.
+
+1. **Open a SECOND, NEW terminal window** (leave the backend running in the first one).
+2. Navigate to the frontend folder:
+   ```bash
+   cd path/to/VibeTravel/frontend
+   ```
+
+3. **Install JavaScript Dependencies**:
+   ```bash
+   npm install
+   ```
+
+4. **Start the Frontend Server**:
+   ```bash
+   npm run dev
+   ```
+
+5. **Open the App**:
+   The terminal will print a local web address (usually `http://localhost:5173/`).
+   **Hold CTRL (or CMD on Mac) and click the link**, or copy-paste it into your web browser.
 
 ---
 
-## Adding Real TBO API Later
+### 🎉 You're Done!
+You should now see the VibeTravel upload screen. Upload an aesthetic landscape photo, enter a budget (e.g., 30000), and let the AI find your perfect match!
 
-Only one file changes: replace `get_tbo_data()` in `backend/fake_tbo.py`.  
-The function signature stays identical — the rest of the codebase is unchanged.
+### Troubleshooting
 
----
-
-## Project Structure
-
-```
-vibetravel/
-├── backend/
-│   ├── main.py                  # FastAPI: /match /chat /confirm /health
-│   ├── clip_utils.py            # CLIP embeddings + zero-shot vibe tags
-│   ├── chromadb_utils.py        # Vector similarity search
-│   ├── gemini_utils.py          # Gemini conversation + match explanation
-│   ├── fake_tbo.py              # 30 destinations, realistic fake prices
-│   ├── session_store.py         # In-memory session state
-│   ├── generate_embeddings.py   # One-time: generate CLIP embeddings
-│   ├── load_chromadb.py         # One-time: load embeddings into ChromaDB
-│   └── download_destination_photos.py  # One-time: download/generate photos
-└── frontend/
-    └── src/
-        ├── App.jsx              # Screen router + API calls
-        ├── screens/             # UploadScreen, LoadingScreen, MatchChatScreen, BookingScreen
-        └── components/          # ChatWindow, DestinationPanel, HotelCard
-```
+- **"Command not found: python"**: Try typing `python3` instead of `python`. If that fails, Python was not installed correctly or not added to your system PATH.
+- **"npm is not recognized"**: You need to install Node.js (see Step 1), or you forgot to restart your terminal after installing Node.js.
+- **App matches perfectly but chat crashes**: Ensure your `.env` file exists in the backend folder and contains a valid `GEMINI_API_KEY`.
