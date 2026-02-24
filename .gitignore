@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.env
+*.egg
+
+# ChromaDB local store (large, regeneratable)
+backend/chroma_store/
+
+# Generated files (regeneratable with scripts)
+backend/destination_embeddings.json
+
+# Destination photos (regeneratable with download script)
+backend/destinations/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Misc
+.DS_Store
+*.log
+.idea/
+.vscode/
+*.swp

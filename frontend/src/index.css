@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-gray-950 text-white font-sans antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: rgba(232, 94, 44, 0.3);
+    color: white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #111827;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 9999px;
+  }
+}
+
+@layer components {
+  .glass {
+    backdrop-filter: blur(16px) saturate(180%);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .glass-dark {
+    backdrop-filter: blur(24px) saturate(180%);
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm tracking-wide active:scale-95 transition-all duration-200;
+    background: linear-gradient(135deg, #e85e2c, #d94520);
+    box-shadow: 0 10px 30px rgba(232, 94, 44, 0.3);
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #ef7c4e, #e85e2c);
+    box-shadow: 0 10px 40px rgba(232, 94, 44, 0.5);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-medium text-sm active:scale-95 transition-all duration-200;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all duration-200;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color-scheme: dark;
+  }
+
+  .input-field::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .input-field:focus {
+    border-color: rgba(232, 94, 44, 0.6);
+    box-shadow: 0 0 0 3px rgba(232, 94, 44, 0.15);
+  }
+
+  .card {
+    @apply rounded-2xl overflow-hidden;
+    backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .vibe-tag {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+  }
+
+  .chat-bubble-user {
+    @apply ml-auto max-w-xs px-4 py-3 rounded-2xl rounded-tr-sm text-sm text-white shadow-md;
+    background: linear-gradient(135deg, #e85e2c, #d94520);
+  }
+
+  .chat-bubble-ai {
+    @apply mr-auto max-w-sm px-4 py-3 rounded-2xl rounded-tl-sm text-sm shadow-md;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.9);
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, #f97316, #ef4444, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b, #d97706);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-mesh {
+    background-color: #030712;
+    background-image:
+      radial-gradient(at 40% 20%, hsla(28, 100%, 50%, 0.12) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.08) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsla(355, 100%, 60%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 80% 50%, hsla(340, 100%, 76%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, hsla(22, 100%, 50%, 0.08) 0px, transparent 50%);
+  }
+
+  .shimmer-bg {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.0) 0%,
+        rgba(255, 255, 255, 0.05) 50%,
+        rgba(255, 255, 255, 0.0) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
