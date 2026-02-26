@@ -20,7 +20,7 @@ import clip_utils
 import chromadb_utils
 import gemini_utils
 import session_store
-from fake_tbo import get_budget_tier, get_tbo_data
+from fake_tbo import get_budget_tier, get_tbo_data, get_compatible_stops, get_region
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -104,19 +104,35 @@ async def find_best_match_async(
     return None
 
 
-# ─── Endpoint 1: POST /match ──────────────────────────────────────────────────
+# ─── Endpoint 1: POST /itineraries ───────────────────────────────────────────
 
-@app.post("/match")
-async def match_destination(
+# Budget split fractions per journey type
+_BUDGET_SPLITS = {
+    "1-stop": [1.0],
+    "2-stop": [0.55, 0.45],
+    "3-stop": [0.45, 0.35, 0.20],
+}
+
+_JOURNEY_LABELS = {
+    "1-stop": "Quick Escape",
+    "2-stop": "Weekend Explorer",
+    "3-stop": "Grand Tour",
+}
+
+
+@app.post("/itineraries")
+async def build_itineraries(
     photo: UploadFile = File(...),
     budget: int = Form(...),
     travel_dates: Optional[str] = Form(None),
 ):
     """
-    Called when user clicks 'Find My Match'.
-    Runs CLIP → ChromaDB → TBO → Gemini and returns match + conversation opener.
+    Called when user clicks 'Find My Journey'.
+    Runs CLIP → ChromaDB → TBO for 3 geographically-constrained journey options
+    (1-stop, 2-stop, 3-stop). Hides options the budget cannot support.
+    Returns all valid itineraries + a session_id for the best one.
     """
-    logger.info(f"POST /match | budget={budget} | filename={photo.filename}")
+    logger.info(f"POST /itineraries | budget={budget} | filename={photo.filename}")
 
     # 1. Read and embed the uploaded photo
     image_bytes = await photo.read()
@@ -129,71 +145,161 @@ async def match_destination(
         logger.error(f"CLIP embedding failed: {e}")
         raise HTTPException(status_code=422, detail=f"Could not process image: {e}")
 
-    # 2. Determine budget tier
+    # 2. Determine budget tier and vibe tags
     budget_tier = get_budget_tier(budget)
-
-    # 3–6. Find best matching destination
-    match = await find_best_match_async(
-        query_embedding=user_embedding,
-        budget=budget,
-        budget_tier=budget_tier,
-        exclude_names=[],
-        n_candidates=5,
-    )
-
-    if match is None:
-        raise HTTPException(
-            status_code=400,
-            detail="We couldn't find a live TBO hotel match for that budget right now. (Make sure your TBO credentials in .env are correct!)",
-        )
-
-    # 7. Get vibe tags via zero-shot CLIP classification
     vibe_tags = clip_utils.get_image_vibes(pil_image)
 
-    # 8. Call Gemini to generate match explanation and conversation opener
+    # 3. Pull top-N candidates from ChromaDB (need enough for 3 stops)
+    candidates = chromadb_utils.query_similar_destinations(
+        query_embedding=user_embedding,
+        budget_tier=budget_tier,
+        n_results=10,
+    )
+
+    if not candidates:
+        raise HTTPException(
+            status_code=400,
+            detail="No matching destinations found. Try a different photo or budget.",
+        )
+
+    # 4. Anchor = best candidate
+    anchor_candidate = candidates[0]
+    anchor_tbo_id = anchor_candidate["tbo_id"]
+    anchor_region = get_region(anchor_tbo_id)
+
+    # 5. Find geographically compatible additional stop IDs
+    compatible_ids = get_compatible_stops(anchor_tbo_id, exclude_ids=[], n=2)
+
+    # 6. Build a pool of resolved TBO stop data (anchor + up to 2 companions)
+    # We assign per-stop budgets based on max split (3-stop) to check feasibility
+    all_stop_ids = [anchor_tbo_id] + compatible_ids
+    stop_budgets_3 = [int(budget * f) for f in _BUDGET_SPLITS["3-stop"]]
+
+    resolved_stops: list[dict] = []  # fully resolved stop dicts
+    for i, tbo_id in enumerate(all_stop_ids):
+        per_stop_budget = stop_budgets_3[i] if i < len(stop_budgets_3) else int(budget * 0.20)
+        tbo_data = await get_tbo_data(tbo_id, per_stop_budget)
+        if tbo_data is None:
+            # Try the next best same-region candidate
+            for cand in candidates[1:]:
+                if cand["tbo_id"] in [s["tbo_id"] for s in resolved_stops] + [anchor_tbo_id]:
+                    continue
+                if get_region(cand["tbo_id"]) == anchor_region:
+                    tbo_data = await get_tbo_data(cand["tbo_id"], per_stop_budget)
+                    if tbo_data:
+                        tbo_id = cand["tbo_id"]
+                        break
+        if tbo_data:
+            # Find matching photo from chromadb candidates
+            photo_path = next(
+                (c["photo"] for c in candidates if c["tbo_id"] == tbo_id),
+                anchor_candidate["photo"]
+            )
+            resolved_stops.append({
+                "destination": tbo_data["destination"],
+                "tbo_id": tbo_id,
+                "photo": photo_path,
+                "price_per_person": tbo_data["price_per_person"],
+                "hotels": tbo_data["hotels"],
+                "flight_min_fare": tbo_data.get("flight_min_fare"),
+                "tagline": tbo_data.get("tagline", ""),
+                "best_season": tbo_data.get("best_season", ""),
+            })
+
+    if not resolved_stops:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not resolve any destinations within your budget.",
+        )
+
+    # 7. Build itinerary options — only include types with enough resolved stops
+    #    and whose total price is ≤ budget
+    itineraries = []
+    for journey_type, fractions in _BUDGET_SPLITS.items():
+        n_stops = len(fractions)
+        if len(resolved_stops) < n_stops:
+            continue  # not enough geo-compatible stops resolved
+
+        stops_for_type = resolved_stops[:n_stops]
+        per_stop_budgets = [int(budget * f) for f in fractions]
+
+        # Recalculate realistic total: sum of cheapest hotel at each stop
+        total_price = 0
+        stop_data_for_type = []
+        for idx, stop in enumerate(stops_for_type):
+            # Scale price to per-stop budget allocated
+            allocated = per_stop_budgets[idx]
+            price = min(stop["price_per_person"], allocated)
+            total_price += price
+            stop_data_for_type.append({**stop, "price_per_person": price, "allocated_budget": allocated})
+
+        # Hide if total price exceeds budget
+        if total_price > budget:
+            logger.info(f"Hiding {journey_type} itinerary: total ₹{total_price:,} > budget ₹{budget:,}")
+            continue
+
+        itineraries.append({
+            "type": journey_type,
+            "label": _JOURNEY_LABELS[journey_type],
+            "stops": stop_data_for_type,
+            "total_price": total_price,
+            "region": anchor_region,
+            "stop_count": n_stops,
+        })
+
+    if not itineraries:
+        raise HTTPException(
+            status_code=400,
+            detail="No itinerary options fit within your budget. Try increasing your budget.",
+        )
+
+    # 8. Generate Gemini explanation for the best (most stops) option
+    best_itinerary = itineraries[-1]  # most stops = last = best value
     try:
-        explanation = gemini_utils.generate_match_explanation(
-            destination_name=match["destination"],
+        explanation = gemini_utils.generate_itinerary_explanation(
+            stops=best_itinerary["stops"],
             vibe_tags=vibe_tags,
         )
     except Exception as e:
-        logger.warning(f"Gemini explanation failed (using fallback): {e}")
+        logger.warning(f"Gemini itinerary explanation failed (using fallback): {e}")
+        stop_names = " → ".join(s["destination"] for s in best_itinerary["stops"])
         explanation = {
-            "match_reasons": [vibe_tags[0] if vibe_tags else "scenic", "beautiful landscape", "unique atmosphere"],
-            "conversation_opener": f"Your photo matched wonderfully with {match['destination']}! Is the landscape the most important factor for you, or more the cultural atmosphere?",
+            "match_reasons": ["scenic journey", "diverse landscapes", "cultural richness"],
+            "itinerary_narrative": f"A wonderful journey through {stop_names}.",
+            "conversation_opener": f"We've found a great {best_itinerary['type']} journey for you through {stop_names}! What would you like to know?",
         }
 
-    # 9. Create session
+    # 9. Create session for the best itinerary (user can start chat from any option)
+    first_stop = best_itinerary["stops"][0]
     session_id = session_store.create_session(
         original_embedding=user_embedding,
         budget=budget,
         budget_tier=budget_tier,
         travel_dates=travel_dates,
-        current_match=match["destination"],
-        current_tbo_id=match["tbo_id"],
-        current_price=match["price_per_person"],
-        current_hotels=match["hotels"],
-        current_photo=match["photo"],
+        current_match=first_stop["destination"],
+        current_tbo_id=first_stop["tbo_id"],
+        current_price=first_stop["price_per_person"],
+        current_hotels=first_stop["hotels"],
+        current_photo=first_stop["photo"],
         match_reasons=explanation["match_reasons"],
         conversation_opener=explanation["conversation_opener"],
         vibe_tags=vibe_tags,
+        itinerary_stops=best_itinerary["stops"],
+        itinerary_type=best_itinerary["type"],
+        itinerary_label=best_itinerary["label"],
+        itinerary_region=best_itinerary["region"],
+        itinerary_total_price=best_itinerary["total_price"],
     )
 
-    # 10. Return response
+    # 10. Return all valid itineraries + session + explanation
     return {
         "session_id": session_id,
-        "matched_destination": match["destination"],
-        "destination_photo": match["photo"],
-        "tbo_id": match["tbo_id"],
-        "price_per_person": match["price_per_person"],
-        "similarity_score": match.get("similarity_score", 0.0),
-        "hotels": match["hotels"],
-        "flight_min_fare": match.get("flight_min_fare"),  # real TBO fare in INR
-        "match_reasons": explanation["match_reasons"],
-        "conversation_opener": explanation["conversation_opener"],
-        "tagline": match.get("tagline", ""),
-        "best_season": match.get("best_season", ""),
+        "itineraries": itineraries,
         "vibe_tags": vibe_tags,
+        "match_reasons": explanation["match_reasons"],
+        "itinerary_narrative": explanation.get("itinerary_narrative", ""),
+        "conversation_opener": explanation["conversation_opener"],
+        "region": anchor_region,
     }
 
 

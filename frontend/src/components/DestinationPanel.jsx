@@ -55,28 +55,46 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                 <div className="flex-1 h-px bg-gradient-to-l from-transparent to-white/10" />
             </div>
 
-            {/* Matched destination photo */}
-            <div
-                className={`relative rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-xl shrink-0 transition-all duration-500 ${isUpdating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-                    }`}
-            >
-                {photoUrl ? (
-                    <img
-                        src={photoUrl}
-                        alt={currentMatch.destination}
-                        className="w-full h-44 object-cover"
-                    />
+            {/* Matched destination photo(s) */}
+            <div className={`transition-all duration-500 ${isUpdating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+                {currentMatch.stops && currentMatch.stops.length > 1 ? (
+                    <div className="flex gap-3 overflow-x-auto pb-4 snap-x">
+                        {currentMatch.stops.map((stop, i) => (
+                            <div key={i} className="relative rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-xl shrink-0 w-48 h-32 snap-start">
+                                <img
+                                    src={`${apiBase}/${stop.photo}`}
+                                    alt={stop.destination}
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                                <div className="absolute bottom-2 left-2 right-2">
+                                    <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">Stop {i + 1}</span>
+                                    <h3 className="text-sm font-bold text-white leading-tight">{stop.destination}</h3>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 ) : (
-                    <div className="w-full h-44 bg-gradient-to-br from-brand-600/30 to-ocean-600/20 flex items-center justify-center">
-                        <span className="text-4xl">🏝️</span>
+                    <div className="relative rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-xl shrink-0">
+                        {photoUrl ? (
+                            <img
+                                src={photoUrl}
+                                alt={currentMatch.destination}
+                                className="w-full h-44 object-cover"
+                            />
+                        ) : (
+                            <div className="w-full h-44 bg-gradient-to-br from-brand-600/30 to-ocean-600/20 flex items-center justify-center">
+                                <span className="text-4xl">🏝️</span>
+                            </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                        <div className="absolute bottom-3 left-3 right-3">
+                            <span className="text-xs font-medium text-white/80 bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/10">
+                                🎯 Best match
+                            </span>
+                        </div>
                     </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                <div className="absolute bottom-3 left-3 right-3">
-                    <span className="text-xs font-medium text-white/80 bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/10">
-                        🎯 Best match
-                    </span>
-                </div>
             </div>
 
             {/* Destination info card */}

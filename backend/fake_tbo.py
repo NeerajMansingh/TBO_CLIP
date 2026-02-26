@@ -60,6 +60,83 @@ DESTINATION_MAP = {
     "SHILLONG_FAKE_030": {"name": "Shillong", "airport": "SHL", "hotel_codes": "1121084,1121085,1121086"}
 }
 
+# Geographic region clustering — stops within the same region make travel sense.
+REGION_MAP: dict[str, str] = {
+    "GOA_FAKE_001":              "West India",
+    "ANDAMAN_FAKE_002":          "Islands",
+    "KOVALAM_FAKE_003":          "South India",
+    "VARKALA_FAKE_004":          "South India",
+    "PONDICHERRY_FAKE_005":      "South India",
+    "MANALI_FAKE_006":           "North India (Hills)",
+    "KASOL_FAKE_007":            "North India (Hills)",
+    "COORG_FAKE_008":            "South India",
+    "MUNNAR_FAKE_009":           "South India",
+    "DARJEELING_FAKE_010":       "Northeast & East",
+    "SPITI_FAKE_011":            "North India (Hills)",
+    "JAIPUR_FAKE_012":           "Rajasthan",
+    "VARANASI_FAKE_013":         "North India (Plains)",
+    "HAMPI_FAKE_014":            "South India",
+    "MYSORE_FAKE_015":           "South India",
+    "JODHPUR_FAKE_016":          "Rajasthan",
+    "CHIKMAGALUR_FAKE_017":      "South India",
+    "WAYANAD_FAKE_018":          "South India",
+    "ALLEPPEY_FAKE_019":         "South India",
+    "JAISALMER_FAKE_020":        "Rajasthan",
+    "ZIRO_FAKE_021":             "Northeast & East",
+    "UDAIPUR_FAKE_022":          "Rajasthan",
+    "LEH_FAKE_023":              "North India (Hills)",
+    "RISHIKESH_FAKE_024":        "North India (Hills)",
+    "OOTY_FAKE_025":             "South India",
+    "KERALA_BACKWATERS_FAKE_026": "South India",
+    "SHIMLA_FAKE_027":           "North India (Hills)",
+    "MAHABALESHWAR_FAKE_028":    "West India",
+    "AGRA_FAKE_029":             "North India (Plains)",
+    "SHILLONG_FAKE_030":         "Northeast & East",
+}
+
+# Logical stop-order within each region (rough travel circuit order)
+_REGION_STOP_ORDER: dict[str, list[str]] = {
+    "South India":        ["GOA_FAKE_001", "PONDICHERRY_FAKE_005", "OOTY_FAKE_025", "COORG_FAKE_008", "CHIKMAGALUR_FAKE_017", "HAMPI_FAKE_014", "MYSORE_FAKE_015", "WAYANAD_FAKE_018", "MUNNAR_FAKE_009", "ALLEPPEY_FAKE_019", "KOVALAM_FAKE_003", "VARKALA_FAKE_004", "KERALA_BACKWATERS_FAKE_026"],
+    "Rajasthan":          ["JAIPUR_FAKE_012", "JODHPUR_FAKE_016", "JAISALMER_FAKE_020", "UDAIPUR_FAKE_022"],
+    "North India (Hills)": ["SHIMLA_FAKE_027", "MANALI_FAKE_006", "KASOL_FAKE_007", "SPITI_FAKE_011", "RISHIKESH_FAKE_024", "LEH_FAKE_023"],
+    "North India (Plains)": ["AGRA_FAKE_029", "VARANASI_FAKE_013"],
+    "Northeast & East":   ["DARJEELING_FAKE_010", "SHILLONG_FAKE_030", "ZIRO_FAKE_021"],
+    "West India":         ["GOA_FAKE_001", "MAHABALESHWAR_FAKE_028"],
+    "Islands":            ["ANDAMAN_FAKE_002"],
+}
+
+
+def get_region(tbo_id: str) -> str:
+    """Return the geographic region label for a destination TBO ID."""
+    return REGION_MAP.get(tbo_id, "Other")
+
+
+def get_compatible_stops(anchor_tbo_id: str, exclude_ids: list[str], n: int = 2) -> list[str]:
+    """
+    Return up to n additional TBO IDs from the same region as the anchor,
+    in logical circuit order, excluding the anchor and any already-used IDs.
+    Falls back to the nearest other region if the anchor's region has too few destinations.
+    """
+    region = get_region(anchor_tbo_id)
+    ordered = _REGION_STOP_ORDER.get(region, [])
+    excluded = set(exclude_ids) | {anchor_tbo_id}
+    compatible = [tid for tid in ordered if tid not in excluded and tid in DESTINATION_MAP]
+    # If region is too small, supplement from closest-feel region
+    if len(compatible) < n:
+        fallback_regions = {
+            "Islands": "South India",
+            "West India": "South India",
+            "North India (Plains)": "Rajasthan",
+        }
+        fb_region = fallback_regions.get(region, "South India")
+        fb_ordered = _REGION_STOP_ORDER.get(fb_region, [])
+        for tid in fb_ordered:
+            if tid not in excluded and tid in DESTINATION_MAP and tid not in compatible:
+                compatible.append(tid)
+            if len(compatible) >= n:
+                break
+    return compatible[:n]
+
 
 def get_budget_tier(budget: int) -> str:
     if budget < 15000:

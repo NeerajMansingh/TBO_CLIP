@@ -102,38 +102,85 @@ Keep each match reason to 3-5 words. Keep the conversation opener to one sentenc
     }
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are a travel assistant for VibeTravel. Your job is to help the user learn about their matched destination ({current_match}) and the hotels available.
+def generate_itinerary_explanation(
+    stops: list[dict],
+    vibe_tags: list[str],
+) -> dict[str, Any]:
+    """
+    Generate match reasons and a conversation opener for a multi-stop itinerary.
+    stops: list of dicts with 'destination' key.
+    """
+    model = get_gemini_model()
+    stop_names = [s["destination"] for s in stops]
+    stop_list_str = " → ".join(stop_names)
+    n = len(stops)
 
-Rules you must always follow:
-1. Be extremely helpful and conversational. Answer the user's questions about the destination or the specific hotels we found.
-2. Keep your responses engaging but concise (under 4 sentences usually). Do not ramble.
-3. You CAN and SHOULD discuss the hotels, prices, and features from the session state below to convince them to book.
-4. When the user says they don't like {current_match} and want a different vibe, return the action "search_again" and specify what changed in updated_filters.
-5. When the user is ready to finalize the booking for {current_match}, return the action "confirm_booking".
+    prompt = f"""A user uploaded a travel inspiration photo. Based on its visual style ({', '.join(vibe_tags)}), we matched them with a {n}-stop Indian itinerary: {stop_list_str}.
 
-Current session state:
-- User total budget: ₹{budget:,}
-- Original photo vibe summary: {vibe_tags}
-- Current matched destination: {current_match}
-- Hotels found in budget:
-{current_hotels}
-- Destinations already rejected or ruled out: {rejected_destinations}
-- User preferences expressed so far: {user_preferences}
-- Conversation so far:
+Return ONLY this JSON (no extra text):
+{{
+  "match_reasons": ["3–5 word reason 1", "3–5 word reason 2", "3–5 word reason 3"],
+  "itinerary_narrative": "One warm, evocative sentence describing the full journey arc (e.g. 'Start with the beaches of Goa, then lose yourself in Hampi's ruins, before unwinding in Mysore's royal gardens.')",
+  "conversation_opener": "One friendly sentence acknowledging the photo vibe and kicking off a chat about the itinerary."
+}}"""
+
+    for attempt in range(2):
+        try:
+            response = model.generate_content(prompt)
+            result = _extract_json(response.text)
+            return {
+                "match_reasons": result.get("match_reasons", ["scenic journey", "diverse landscapes", "cultural richness"]),
+                "itinerary_narrative": result.get("itinerary_narrative", f"A beautiful journey through {stop_list_str}."),
+                "conversation_opener": result.get("conversation_opener", f"Your photo perfectly matches a {n}-stop journey through {stop_list_str}! Which stop excites you most?"),
+            }
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str and attempt == 0:
+                logger.warning("Gemini 429 rate limit — waiting 35s...")
+                import time; time.sleep(35)
+                continue
+            logger.warning(f"Gemini itinerary explanation failed: {e}")
+            break
+
+    return {
+        "match_reasons": ["scenic journey", "diverse landscapes", "cultural richness"],
+        "itinerary_narrative": f"An unforgettable journey through {stop_list_str}.",
+        "conversation_opener": f"We've designed a stunning {n}-stop journey for you through {stop_list_str}! What would you like to know first?",
+    }
+
+
+SYSTEM_PROMPT_TEMPLATE = """You are a travel assistant for VibeTravel. You are helping the user plan their trip.
+
+Rules:
+1. Be helpful, warm, and conversational. Keep responses under 4 sentences.
+2. The user has a {stop_count}-stop itinerary: {itinerary_summary}. Discuss all stops when relevant.
+3. You CAN discuss hotels, prices, and features from the session state to convince them to book.
+4. If the user dislikes the itinerary, return action "search_again" with updated_filters.
+5. When the user is ready to book, return action "confirm_booking".
+
+Session state:
+- Budget: ₹{budget:,}
+- Photo vibe: {vibe_tags}
+- Itinerary type: {itinerary_label} ({itinerary_type})
+- Itinerary stops:
+{itinerary_stops_detail}
+- Rejected destinations: {rejected_destinations}
+- Preferences: {user_preferences}
+- Conversation:
 {conversation_history}
 
-Respond in the following JSON format every time, and return ONLY this JSON with no extra text:
+Respond ONLY as JSON:
 {{
-  "message": "Your helpful, conversational response",
+  "message": "Your helpful response",
   "action": "ask_question",
   "updated_filters": {{
     "must_have": [],
     "must_not_have": [],
-    "vibe_adjustment": "description of new vibe if search_again"
+    "vibe_adjustment": ""
   }}
 }}
 
-The action field must be exactly ONE of: "ask_question", "search_again", "confirm_booking". Use "ask_question" for normal conversation.
+action must be exactly one of: "ask_question", "search_again", "confirm_booking".
 """
 
 
@@ -158,11 +205,38 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
     except (ValueError, TypeError):
         budget_val = 0
 
+    # Build itinerary-aware context
+    itinerary_stops = session.get("itinerary_stops", [])
+    if not itinerary_stops:
+        # Backward-compat: wrap single match as a 1-stop itinerary
+        itinerary_stops = [{
+            "destination": session.get("current_match", "Unknown"),
+            "hotels": session.get("current_hotels", []),
+            "price_per_person": session.get("current_price", 0),
+        }]
+
+    stop_count = len(itinerary_stops)
+    itinerary_summary = " → ".join(s.get("destination", "?") for s in itinerary_stops)
+
+    stop_lines = []
+    for i, s in enumerate(itinerary_stops, 1):
+        hotels_brief = "; ".join(
+            f"{h.get('name','?')} (₹{h.get('price_per_night',0):,.0f}/night)"
+            for h in s.get("hotels", [])[:2]
+        )
+        stop_lines.append(
+            f"  Stop {i}: {s.get('destination','?')} | ₹{s.get('price_per_person',0):,} | Hotels: {hotels_brief or 'TBD'}"
+        )
+    itinerary_stops_detail = "\n".join(stop_lines) or "  No stops available."
+
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
         budget=budget_val,
         vibe_tags=", ".join(session.get("vibe_tags", [])),
-        current_match=session.get("current_match", "Unknown"),
-        current_hotels=json.dumps(session.get("hotels", []), indent=2),
+        stop_count=stop_count,
+        itinerary_summary=itinerary_summary,
+        itinerary_label=session.get("itinerary_label", "Quick Escape"),
+        itinerary_type=session.get("itinerary_type", "1-stop"),
+        itinerary_stops_detail=itinerary_stops_detail,
         rejected_destinations=", ".join(rejected) if rejected else "None",
         user_preferences=", ".join(prefs) if prefs else "None specified yet",
         conversation_history=conversation_history,

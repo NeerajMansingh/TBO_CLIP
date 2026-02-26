@@ -26,6 +26,11 @@ def create_session(
     match_reasons: list[str],
     conversation_opener: str,
     vibe_tags: list[str],
+    itinerary_stops: Optional[list[dict]] = None,
+    itinerary_type: Optional[str] = None,
+    itinerary_label: Optional[str] = None,
+    itinerary_region: Optional[str] = None,
+    itinerary_total_price: Optional[int] = None,
 ) -> str:
     """
     Create a new session and return its ID.
@@ -67,6 +72,12 @@ def create_session(
             {"role": "assistant", "content": conversation_opener}
         ],
         "confirmed": False,
+        # Itinerary fields (populated when using the new /itineraries flow)
+        "itinerary_stops": itinerary_stops or [],
+        "itinerary_type": itinerary_type or "1-stop",
+        "itinerary_label": itinerary_label or "Quick Escape",
+        "itinerary_region": itinerary_region or "",
+        "itinerary_total_price": itinerary_total_price or current_price,
     }
 
     return session_id
@@ -109,6 +120,32 @@ def update_match(
         session["current_hotels"] = new_hotels
         session["current_photo"] = new_photo
         session["match_reasons"] = new_match_reasons
+
+
+def update_itinerary(
+    session_id: str,
+    new_stops: list[dict],
+    itinerary_type: str,
+    itinerary_label: str,
+    itinerary_region: str,
+    itinerary_total_price: int,
+) -> None:
+    """Replace the full itinerary stops for a session (used if user switches journey type in chat)."""
+    session = _sessions.get(session_id)
+    if session:
+        session["itinerary_stops"] = new_stops
+        session["itinerary_type"] = itinerary_type
+        session["itinerary_label"] = itinerary_label
+        session["itinerary_region"] = itinerary_region
+        session["itinerary_total_price"] = itinerary_total_price
+        # Keep backward-compat fields pointed at stop 1
+        if new_stops:
+            s = new_stops[0]
+            session["current_match"] = s.get("destination", session["current_match"])
+            session["current_tbo_id"] = s.get("tbo_id", session["current_tbo_id"])
+            session["current_price"] = s.get("price_per_person", session["current_price"])
+            session["current_hotels"] = s.get("hotels", session["current_hotels"])
+            session["current_photo"] = s.get("photo", session["current_photo"])
 
 
 def add_rejected_destination(session_id: str, destination_name: str) -> None:
