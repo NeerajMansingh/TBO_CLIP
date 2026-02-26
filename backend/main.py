@@ -120,6 +120,18 @@ _JOURNEY_LABELS = {
 }
 
 
+# Fallback photos for destinations not in the limited ChromaDB sample
+_FALLBACK_PHOTOS = {
+    "Jaisalmer": "https://images.unsplash.com/photo-1599818817477-90c74b99813b?q=80&w=2672&auto=format&fit=crop", # Proper desert/fort photo
+    "Udaipur": "https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=2670&auto=format&fit=crop",
+    "Leh-Ladakh": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=2670&auto=format&fit=crop",
+    "Alleppey": "https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=2670&auto=format&fit=crop",
+    "Ooty": "https://images.unsplash.com/photo-1622279457486-7e72a7c17e55?q=80&w=2670&auto=format&fit=crop",
+    "Rishikesh": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2670&auto=format&fit=crop",
+    "Shimla": "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?q=80&w=2670&auto=format&fit=crop",
+    "Agra": "https://images.unsplash.com/photo-1564507592224-200543666925?q=80&w=2670&auto=format&fit=crop",
+}
+
 @app.post("/itineraries")
 async def build_itineraries(
     photo: UploadFile = File(...),
@@ -193,8 +205,19 @@ async def build_itineraries(
             # Find matching photo from chromadb candidates
             photo_path = next(
                 (c["photo"] for c in candidates if c["tbo_id"] == tbo_id),
-                anchor_candidate["photo"]
+                None
             )
+            if not photo_path:
+                dest_meta = chromadb_utils.get_destination_by_id(tbo_id)
+                if dest_meta and "photo" in dest_meta:
+                    photo_path = dest_meta["photo"]
+                else:
+                    # Fallback to specific destination photos or generic placeholder
+                    dest_name = tbo_data.get("destination", "")
+                    photo_path = _FALLBACK_PHOTOS.get(
+                        dest_name, 
+                        "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2670&auto=format&fit=crop" # Generic lake/boat, safer than snow
+                    )
             resolved_stops.append({
                 "destination": tbo_data["destination"],
                 "tbo_id": tbo_id,

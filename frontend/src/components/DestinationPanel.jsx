@@ -51,7 +51,7 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                     return stopsToRender.map((stop, index) => {
                         const stopPhotoUrl = stop.photo
                             ? (stop.photo.startsWith('http') ? stop.photo : `${apiBase}/${stop.photo}`)
-                            : null;
+                            : "https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
                         const defaultFlight = Math.floor(stop.price_per_person * 0.35);
                         const flightCost = stop.flight_min_fare || defaultFlight;
                         const hotelCost = stop.price_per_person ? stop.price_per_person - flightCost : 0;
@@ -63,7 +63,7 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                                 {/* Image Header */}
                                 <div className="relative h-56 w-full overflow-hidden rounded-t-2xl">
                                     <img
-                                        src={stopPhotoUrl || "https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"}
+                                        src={stopPhotoUrl}
                                         alt={stop.destination}
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                     />

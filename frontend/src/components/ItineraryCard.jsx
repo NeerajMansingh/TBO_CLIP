@@ -34,7 +34,7 @@ export default function ItineraryCard({ itinerary, onSelect, travelMonth, origin
                     {itinerary.stops.map((stop, i) => (
                         <div key={stop.tbo_id} className="relative z-10 flex gap-3 items-center">
                             <img
-                                src={`http://localhost:8000/${stop.photo}`}
+                                src={stop.photo?.startsWith('http') ? stop.photo : `http://localhost:8000/${stop.photo}`}
                                 alt={stop.destination}
                                 className="w-12 h-12 rounded-lg object-cover ring-2 ring-gray-900 shadow-lg"
                             />

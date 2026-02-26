@@ -176,7 +176,23 @@ export default function App() {
       ? scored.slice(0, 3)
       : [...scored, ...DESTINATION_POOL.filter(d => !scored.includes(d))].slice(0, 3)
 
-    setResults(refined)
+    // Convert raw destination data to valid itinerary structures expected by the UI
+    const refinedItineraries = refined.map(dest => ({
+      type: "1-stop",
+      label: "Refined Match",
+      stops: [{
+        destination: dest.name,
+        tbo_id: dest.id,
+        photo: dest.image_url,
+        price_per_person: dest.flight_price + dest.hotel_price,
+        hotels: []
+      }],
+      total_price: dest.flight_price + dest.hotel_price,
+      region: dest.country || "INDIA",
+      stop_count: 1
+    }));
+
+    setResults(refinedItineraries)
     setAppState('results')
   }
 
