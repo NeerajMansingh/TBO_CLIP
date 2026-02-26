@@ -260,6 +260,14 @@ async def build_itineraries(
             stops=best_itinerary["stops"],
             vibe_tags=vibe_tags,
         )
+        # Apply the personalized narratives to all stops in all itineraries
+        stop_narratives = explanation.get("stop_narratives", {})
+        for it in itineraries:
+            for s in it["stops"]:
+                # Only override if we generated a specific narrative for this destination
+                if s["destination"] in stop_narratives:
+                    s["tagline"] = stop_narratives[s["destination"]]
+                    
     except Exception as e:
         logger.warning(f"Gemini itinerary explanation failed (using fallback): {e}")
         stop_names = " → ".join(s["destination"] for s in best_itinerary["stops"])
@@ -267,6 +275,7 @@ async def build_itineraries(
             "match_reasons": ["scenic journey", "diverse landscapes", "cultural richness"],
             "itinerary_narrative": f"A wonderful journey through {stop_names}.",
             "conversation_opener": f"We've found a great {best_itinerary['type']} journey for you through {stop_names}! What would you like to know?",
+            "stop_narratives": {}
         }
 
     # 9. Create session for the best itinerary (user can start chat from any option)

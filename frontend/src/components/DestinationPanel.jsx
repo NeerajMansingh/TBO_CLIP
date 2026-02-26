@@ -9,37 +9,32 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
 
     return (
         <div className="h-full flex flex-col bg-gray-950/60 p-4 gap-4">
-            {/* Header */}
-            <div className="flex items-center gap-2 pt-2 px-1">
-                <span className="text-lg">✈️</span>
-                <span className="font-display font-bold text-white text-lg">VibeTravel</span>
-
+            {/* Journey Header */}
+            <div className="mb-2 mt-4 flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-white mb-1">
+                        Your {currentMatch.stops?.length > 1 ? `${currentMatch.stops.length} Stop` : ''} Journey
+                    </h2>
+                    <p className="text-white/50 text-sm">
+                        Detailed price breakdown and intelligence for each stop on your itinerary.
+                    </p>
+                </div>
                 {isFallback ? (
-                    <span className="ml-auto flex items-center gap-1.5 text-xs text-orange-300 bg-orange-500/10 px-2 py-1 rounded-lg border border-orange-500/30">
+                    <span className="flex items-center gap-1.5 text-xs text-orange-300 bg-orange-500/10 px-2 py-1 rounded-lg border border-orange-500/30">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
                         Mock Demo Mode
                     </span>
                 ) : (
-                    <span className="ml-auto text-xs text-brand-300 bg-brand-500/10 px-2 py-1 rounded-lg border border-brand-500/30">
+                    <span className="text-xs text-brand-300 bg-brand-500/10 px-2 py-1 rounded-lg border border-brand-500/30">
                         Live TBO Match
                     </span>
                 )}
             </div>
 
-            {/* Journey Header */}
-            <div className="mb-2 mt-4">
-                <h2 className="text-2xl font-display font-bold text-white mb-1">
-                    Your {currentMatch.stops?.length > 1 ? `${currentMatch.stops.length} Stop` : ''} Journey
-                </h2>
-                <p className="text-white/50 text-sm">
-                    Detailed price breakdown and intelligence for each stop on your itinerary.
-                </p>
-            </div>
-
             {/* Stops Grid */}
-            <div className={`grid grid-cols-1 md:grid-cols-${currentMatch.stops ? currentMatch.stops.length : 1} gap-6 w-full transition-all duration-500 pb-4 ${isUpdating ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
+            <div className={`grid grid-cols-1 ${currentMatch.stops?.length === 3 ? 'md:grid-cols-3' : currentMatch.stops?.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6 w-full transition-all duration-500 pb-4 ${isUpdating ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
                 {(() => {
                     const stopsToRender = currentMatch.stops && currentMatch.stops.length > 0
                         ? currentMatch.stops

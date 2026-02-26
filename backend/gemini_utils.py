@@ -121,7 +121,10 @@ Return ONLY this JSON (no extra text):
 {{
   "match_reasons": ["3–5 word reason 1", "3–5 word reason 2", "3–5 word reason 3"],
   "itinerary_narrative": "One warm, evocative sentence describing the full journey arc (e.g. 'Start with the beaches of Goa, then lose yourself in Hampi's ruins, before unwinding in Mysore's royal gardens.')",
-  "conversation_opener": "One friendly sentence acknowledging the photo vibe and kicking off a chat about the itinerary."
+  "conversation_opener": "One friendly sentence acknowledging the photo vibe and kicking off a chat about the itinerary.",
+  "stop_narratives": {{
+{",".join([f'    "{name}": "One short, highly specific, and evocative sentence explaining why this specific stop fits the requested vibe"' for name in stop_names])}
+  }}
 }}"""
 
     for attempt in range(2):
@@ -132,6 +135,7 @@ Return ONLY this JSON (no extra text):
                 "match_reasons": result.get("match_reasons", ["scenic journey", "diverse landscapes", "cultural richness"]),
                 "itinerary_narrative": result.get("itinerary_narrative", f"A beautiful journey through {stop_list_str}."),
                 "conversation_opener": result.get("conversation_opener", f"Your photo perfectly matches a {n}-stop journey through {stop_list_str}! Which stop excites you most?"),
+                "stop_narratives": result.get("stop_narratives", {})
             }
         except Exception as e:
             err_str = str(e)
