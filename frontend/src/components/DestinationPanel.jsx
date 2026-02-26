@@ -49,7 +49,9 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                         }];
 
                     return stopsToRender.map((stop, index) => {
-                        const stopPhotoUrl = stop.photo ? `${apiBase}/${stop.photo}` : null;
+                        const stopPhotoUrl = stop.photo
+                            ? (stop.photo.startsWith('http') ? stop.photo : `${apiBase}/${stop.photo}`)
+                            : null;
                         const defaultFlight = Math.floor(stop.price_per_person * 0.35);
                         const flightCost = stop.flight_min_fare || defaultFlight;
                         const hotelCost = stop.price_per_person ? stop.price_per_person - flightCost : 0;

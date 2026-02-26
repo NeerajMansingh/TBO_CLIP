@@ -326,13 +326,16 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
             # Extracts
             h_name = details.get("HotelName", f"Hotel {code}")
             
-            # Rating parsing, e.g. "ThreeStar" -> 3.0
-            r_str = details.get("HotelRating", "ThreeStar")
+            # Rating parsing, handle both strings (e.g. "ThreeStar") and numbers (e.g. 4)
+            r_val = details.get("HotelRating", "ThreeStar")
             rating = 3.0
-            if "Four" in r_str: rating = 4.0
-            if "Five" in r_str: rating = 5.0
-            if "Two" in r_str: rating = 2.0
-            if "One" in r_str: rating = 1.0
+            if isinstance(r_val, (int, float)):
+                rating = float(r_val)
+            elif isinstance(r_val, str):
+                if "Four" in r_val or "4" in r_val: rating = 4.0
+                elif "Five" in r_val or "5" in r_val: rating = 5.0
+                elif "Two" in r_val or "2" in r_val: rating = 2.0
+                elif "One" in r_val or "1" in r_val: rating = 1.0
                 
             # Images can be a list of URLs or a single string URL depending on API response
             raw_images = details.get("Images", [])
