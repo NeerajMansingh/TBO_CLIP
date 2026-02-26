@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any
 
 import google.generativeai as genai
@@ -18,7 +19,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 _gemini_client: genai.GenerativeModel | None = None
 
 
@@ -61,13 +62,7 @@ def generate_match_explanation(
 ) -> dict[str, Any]:
     """
     Generate match reasons and conversation opener for the initial /match response.
-
-    Args:
-        destination_name: Name of the matched destination
-        vibe_tags: Top 5 vibe keywords extracted by CLIP zero-shot classification
-
-    Returns:
-        Dict with keys: match_reasons (list[str]), conversation_opener (str)
+    Retries once on 429 rate-limit errors (waits 35s as suggested by Gemini).
     """
     model = get_gemini_model()
 
@@ -83,21 +78,28 @@ Return a JSON with exactly this structure and nothing else:
 
 Keep each match reason to 3-5 words. Keep the conversation opener to one sentence maximum. Be warm and specific about the destination."""
 
-    response = model.generate_content(prompt)
-    raw_text = response.text
+    for attempt in range(2):  # try twice: once fresh, once after 429 retry
+        try:
+            response = model.generate_content(prompt)
+            raw_text = response.text
+            result = _extract_json(raw_text)
+            return {
+                "match_reasons": result.get("match_reasons", ["scenic location", "beautiful atmosphere", "popular destination"]),
+                "conversation_opener": result.get("conversation_opener", f"Your photo matched {destination_name}! What aspect of the destination excites you most?"),
+            }
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str and attempt == 0:
+                logger.warning("Gemini 429 rate limit hit — waiting 35s before retry...")
+                time.sleep(35)
+                continue
+            logger.warning(f"Gemini match explanation failed: {e}")
+            break
 
-    try:
-        result = _extract_json(raw_text)
-        return {
-            "match_reasons": result.get("match_reasons", ["scenic location", "beautiful atmosphere", "popular destination"]),
-            "conversation_opener": result.get("conversation_opener", f"Your photo matched {destination_name}! What aspect of the destination excites you most?"),
-        }
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.warning(f"Failed to parse Gemini match explanation: {e}. Raw: {raw_text[:200]}")
-        return {
-            "match_reasons": [vibe_tags[0] if vibe_tags else "scenic", "beautiful landscape", "unique atmosphere"],
-            "conversation_opener": f"Your photo has a wonderful vibe that matches {destination_name}! Is the visual feel of the landscape the most important factor for you?",
-        }
+    return {
+        "match_reasons": [vibe_tags[0] if vibe_tags else "scenic", "beautiful landscape", "unique atmosphere"],
+        "conversation_opener": f"Your photo has a wonderful vibe that matches {destination_name}! Is the visual feel of the landscape the most important factor for you?",
+    }
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are a travel assistant for VibeTravel. Your job is to help the user learn about their matched destination ({current_match}) and the hotels available.
@@ -138,16 +140,10 @@ The action field must be exactly ONE of: "ask_question", "search_again", "confir
 def generate_chat_response(session: dict) -> dict[str, Any]:
     """
     Generate the next chat response from Gemini for a conversation turn.
-
-    Args:
-        session: Full session state dict
-
-    Returns:
-        Dict with keys: message, action, updated_filters
+    Retries once on 429 rate-limit errors.
     """
     model = get_gemini_model()
 
-    # Format conversation history for the prompt
     convo_lines = []
     for msg in session.get("conversation_history", []):
         role = "Assistant" if msg["role"] == "assistant" else "User"
@@ -172,24 +168,31 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
         conversation_history=conversation_history,
     )
 
-    response = model.generate_content(prompt)
-    raw_text = response.text
+    for attempt in range(2):
+        try:
+            response = model.generate_content(prompt)
+            raw_text = response.text
+            result = _extract_json(raw_text)
+            return {
+                "message": result.get("message", "I'd love to help you find the perfect destination! What's most important to you?"),
+                "action": result.get("action", "ask_question"),
+                "updated_filters": result.get("updated_filters", {
+                    "must_have": [],
+                    "must_not_have": [],
+                    "vibe_adjustment": "",
+                }),
+            }
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str and attempt == 0:
+                logger.warning("Gemini 429 rate limit hit — waiting 35s before retry...")
+                time.sleep(35)
+                continue
+            logger.warning(f"Gemini chat response failed: {e}")
+            break
 
-    try:
-        result = _extract_json(raw_text)
-        return {
-            "message": result.get("message", "I'd love to help you find the perfect destination! What's most important to you?"),
-            "action": result.get("action", "ask_question"),
-            "updated_filters": result.get("updated_filters", {
-                "must_have": [],
-                "must_not_have": [],
-                "vibe_adjustment": "",
-            }),
-        }
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.warning(f"Failed to parse Gemini chat response: {e}. Raw: {raw_text[:200]}")
-        return {
-            "message": "I want to make sure I find the perfect destination for you. Could you tell me what's most important — the type of landscape, the activities, or the overall vibe?",
-            "action": "ask_question",
-            "updated_filters": {"must_have": [], "must_not_have": [], "vibe_adjustment": ""},
-        }
+    return {
+        "message": "I want to make sure I find the perfect destination for you. Could you tell me what's most important — the type of landscape, the activities, or the overall vibe?",
+        "action": "ask_question",
+        "updated_filters": {"must_have": [], "must_not_have": [], "vibe_adjustment": ""},
+    }

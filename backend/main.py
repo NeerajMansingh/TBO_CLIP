@@ -96,6 +96,7 @@ async def find_best_match_async(
             "similarity_score": candidate["similarity_score"],
             "price_per_person": tbo_data["price_per_person"],
             "hotels": tbo_data["hotels"],
+            "flight_min_fare": tbo_data.get("flight_min_fare"),
             "tagline": tbo_data.get("tagline", ""),
             "best_season": tbo_data.get("best_season", ""),
         }
@@ -187,6 +188,7 @@ async def match_destination(
         "price_per_person": match["price_per_person"],
         "similarity_score": match.get("similarity_score", 0.0),
         "hotels": match["hotels"],
+        "flight_min_fare": match.get("flight_min_fare"),  # real TBO fare in INR
         "match_reasons": explanation["match_reasons"],
         "conversation_opener": explanation["conversation_opener"],
         "tagline": match.get("tagline", ""),

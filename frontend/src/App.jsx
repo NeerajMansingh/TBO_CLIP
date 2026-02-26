@@ -141,13 +141,14 @@ export default function App() {
             id: data.tbo_id || 1,
             name: data.matched_destination,
             country: "INDIA", // Mocked
-            image_url: `http://localhost:8000/destinations/${data.destination_photo}`,
+            image_url: `http://localhost:8000/${data.destination_photo}`,
             rating: 4.8,
             best_month: data.best_season || "Anytime",
             match_score: data.similarity_score ? Math.round(data.similarity_score * 100) : 62,
             tags: data.vibe_tags || [],
             reasoning: data.match_reasons?.join(" ") || "Perfect match for your vibes!",
-            flight_price: 18500,
+            flight_price: data.flight_min_fare || 18500,  // real TBO fare, fallback if unavailable
+            flight_price_live: !!data.flight_min_fare,     // true = came from live TBO API
             hotel_price: data.price_per_person || 45000,
           },
           // Fake 2nd Option
