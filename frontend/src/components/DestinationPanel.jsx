@@ -105,7 +105,7 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                                     </div>
 
                                     {/* Intelligence Narrative */}
-                                    <div className="mb-6 bg-gray-950/50 p-4 rounded-xl border border-gray-800 flex-1">
+                                    <div className="mb-6 bg-gray-950/50 p-4 rounded-xl border border-gray-800">
                                         <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest flex items-center gap-1.5 mb-2">
                                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> Why this works for you
                                         </span>
@@ -113,6 +113,34 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                                             "{stop.tagline || `Based on your vibes, ${stop.destination} offers a perfect blend of experiences that match your request.`}"
                                         </p>
                                     </div>
+
+                                    {/* Day-by-Day Itinerary Segment */}
+                                    {stop.itinerary && stop.itinerary.length > 0 && (
+                                        <div className="mb-6 flex-1">
+                                            <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                3-Day Sample Itinerary
+                                            </h4>
+                                            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-800 before:to-transparent">
+                                                {stop.itinerary.map((day, idx) => (
+                                                    <div key={idx} className="relative flex items-top gap-4">
+                                                        <div className="flex-none flex items-center justify-center w-5 h-5 rounded-full bg-gray-900 border border-gray-700 shadow-sm z-10 mt-0.5">
+                                                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                                                        </div>
+                                                        <div className="flex-1 pb-1">
+                                                            <div className="text-sm font-bold text-white mb-1">
+                                                                <span className="text-indigo-400 mr-2">Day {day.day}</span>
+                                                                {day.title}
+                                                            </div>
+                                                            <p className="text-xs text-gray-400 leading-relaxed">
+                                                                {day.description}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Pricing breakdown */}
                                     {stop.price_per_person && (

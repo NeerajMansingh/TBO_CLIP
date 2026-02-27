@@ -124,6 +124,9 @@ Return ONLY this JSON (no extra text):
   "conversation_opener": "One friendly sentence acknowledging the photo vibe and kicking off a chat about the itinerary.",
   "stop_narratives": {{
 {",".join([f'    "{name}": "One short, highly specific, and evocative sentence explaining why this specific stop fits the requested vibe"' for name in stop_names])}
+  }},
+  "stop_itineraries": {{
+{",".join([f'    "{name}": [{{ "day": 1, "title": "Day 1 Concept", "description": "1 sentence" }}, {{ "day": 2, "title": "Day 2 Concept", "description": "1 sentence" }}, {{ "day": 3, "title": "Day 3 Concept", "description": "1 sentence" }}]' for name in stop_names])}
   }}
 }}"""
 
@@ -135,7 +138,8 @@ Return ONLY this JSON (no extra text):
                 "match_reasons": result.get("match_reasons", ["scenic journey", "diverse landscapes", "cultural richness"]),
                 "itinerary_narrative": result.get("itinerary_narrative", f"A beautiful journey through {stop_list_str}."),
                 "conversation_opener": result.get("conversation_opener", f"Your photo perfectly matches a {n}-stop journey through {stop_list_str}! Which stop excites you most?"),
-                "stop_narratives": result.get("stop_narratives", {})
+                "stop_narratives": result.get("stop_narratives", {}),
+                "stop_itineraries": result.get("stop_itineraries", {})
             }
         except Exception as e:
             err_str = str(e)
@@ -146,10 +150,21 @@ Return ONLY this JSON (no extra text):
             logger.warning(f"Gemini itinerary explanation failed: {e}")
             break
 
+    # Fallback response when rate limit or API fails completely
+    fallback_itineraries = {}
+    for name in stop_names:
+        fallback_itineraries[name] = [
+            {"day": 1, "title": "Arrival & Exploration", "description": f"Settle into {name} and explore local highlights."},
+            {"day": 2, "title": "Immersive Vibe", "description": f"Dive deep into the {vibe_tags[0] if vibe_tags else 'local'} culture and landscapes."},
+            {"day": 3, "title": "Relax & Depart", "description": "Enjoy a slow morning before continuing your journey."}
+        ]
+
     return {
         "match_reasons": ["scenic journey", "diverse landscapes", "cultural richness"],
         "itinerary_narrative": f"An unforgettable journey through {stop_list_str}.",
         "conversation_opener": f"We've designed a stunning {n}-stop journey for you through {stop_list_str}! What would you like to know first?",
+        "stop_narratives": {},
+        "stop_itineraries": fallback_itineraries,
     }
 
 

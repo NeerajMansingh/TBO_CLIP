@@ -283,13 +283,15 @@ async def build_itineraries(
             stops=best_itinerary["stops"],
             vibe_tags=vibe_tags,
         )
-        # Apply the personalized narratives to all stops in all itineraries
+        # Apply the personalized narratives and itineraries to all stops in all itineraries
         stop_narratives = explanation.get("stop_narratives", {})
+        stop_itineraries = explanation.get("stop_itineraries", {})
         for it in itineraries:
             for s in it["stops"]:
-                # Only override if we generated a specific narrative for this destination
                 if s["destination"] in stop_narratives:
                     s["tagline"] = stop_narratives[s["destination"]]
+                if s["destination"] in stop_itineraries:
+                    s["itinerary"] = stop_itineraries[s["destination"]]
                     
     except Exception as e:
         logger.warning(f"Gemini itinerary explanation failed (using fallback): {e}")
