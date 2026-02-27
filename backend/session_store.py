@@ -1,6 +1,9 @@
 """
 session_store.py — In-memory session state management.
-No database required — all state lives in a Python dictionary for the hackathon.
+No database required — all state lives in a Python dictionary.
+
+Upgraded to support itinerary edit history, day allocation per stop,
+and transport modes per leg.
 """
 
 from __future__ import annotations
@@ -31,28 +34,17 @@ def create_session(
     itinerary_label: Optional[str] = None,
     itinerary_region: Optional[str] = None,
     itinerary_total_price: Optional[int] = None,
+    duration_days: Optional[int] = None,
 ) -> str:
     """
     Create a new session and return its ID.
-
-    Args:
-        original_embedding: CLIP vector of the user's uploaded photo
-        budget: User budget in INR
-        budget_tier: 'budget', 'mid-range', or 'premium'
-        travel_dates: Travel date string (or None)
-        current_match: Name of the initially matched destination
-        current_tbo_id: TBO ID of the initial match
-        current_price: Price per person of the initial match
-        current_hotels: List of hotel dicts for the initial match
-        current_photo: Relative path to the destination hero photo
-        match_reasons: List of 3 reason strings
-        conversation_opener: First AI message in chat
-        vibe_tags: Top vibe keywords from CLIP zero-shot classification
 
     Returns:
         New session ID string
     """
     session_id = str(uuid.uuid4())[:8]  # Short IDs for demo friendliness
+
+    n_stops = len(itinerary_stops) if itinerary_stops else 1
 
     _sessions[session_id] = {
         "original_embedding": original_embedding,
@@ -72,12 +64,18 @@ def create_session(
             {"role": "assistant", "content": conversation_opener}
         ],
         "confirmed": False,
-        # Itinerary fields (populated when using the new /itineraries flow)
+        # Itinerary fields
         "itinerary_stops": itinerary_stops or [],
         "itinerary_type": itinerary_type or "1-stop",
         "itinerary_label": itinerary_label or "Quick Escape",
         "itinerary_region": itinerary_region or "",
         "itinerary_total_price": itinerary_total_price or current_price,
+        # New: per-leg metadata
+        "leg_transport_modes": {i: "flight" for i in range(n_stops)},
+        "days_per_stop": {i: 2 for i in range(n_stops)},
+        "duration_days": duration_days,
+        # Edit history for undo / audit trail
+        "edit_history": [],
     }
 
     return session_id
@@ -89,14 +87,7 @@ def get_session(session_id: str) -> Optional[dict]:
 
 
 def add_message(session_id: str, role: str, content: str) -> None:
-    """
-    Append a message to the conversation history.
-
-    Args:
-        session_id: Session identifier
-        role: 'user' or 'assistant'
-        content: Message text
-    """
+    """Append a message to the conversation history."""
     session = _sessions.get(session_id)
     if session:
         session["conversation_history"].append({"role": role, "content": content})
@@ -130,7 +121,7 @@ def update_itinerary(
     itinerary_region: str,
     itinerary_total_price: int,
 ) -> None:
-    """Replace the full itinerary stops for a session (used if user switches journey type in chat)."""
+    """Replace the full itinerary stops for a session."""
     session = _sessions.get(session_id)
     if session:
         session["itinerary_stops"] = new_stops
@@ -138,6 +129,10 @@ def update_itinerary(
         session["itinerary_label"] = itinerary_label
         session["itinerary_region"] = itinerary_region
         session["itinerary_total_price"] = itinerary_total_price
+        # Reset per-leg metadata
+        n = len(new_stops)
+        session["leg_transport_modes"] = {i: "flight" for i in range(n)}
+        session["days_per_stop"] = {i: 2 for i in range(n)}
         # Keep backward-compat fields pointed at stop 1
         if new_stops:
             s = new_stops[0]
@@ -146,6 +141,53 @@ def update_itinerary(
             session["current_price"] = s.get("price_per_person", session["current_price"])
             session["current_hotels"] = s.get("hotels", session["current_hotels"])
             session["current_photo"] = s.get("photo", session["current_photo"])
+
+
+def update_leg(
+    session_id: str,
+    leg_index: int,
+    transport_mode: Optional[str] = None,
+    days_at_stop: Optional[int] = None,
+) -> None:
+    """Update transport mode or day count for a specific leg/stop."""
+    session = _sessions.get(session_id)
+    if session:
+        if transport_mode is not None:
+            session["leg_transport_modes"][leg_index] = transport_mode.lower()
+        if days_at_stop is not None:
+            session["days_per_stop"][leg_index] = days_at_stop
+
+
+def reorder_stops(session_id: str, new_order: list[str]) -> None:
+    """
+    Reorder session itinerary stops by destination name list.
+    new_order: list of destination names in the desired order.
+    """
+    session = _sessions.get(session_id)
+    if not session:
+        return
+
+    current = session.get("itinerary_stops", [])
+    name_to_stop = {s.get("destination", "").lower(): s for s in current}
+    reordered = [name_to_stop[n.lower()] for n in new_order if n.lower() in name_to_stop]
+
+    record_edit(session_id, "reorder_stops", {
+        "old_order": [s.get("destination") for s in current],
+        "new_order": new_order,
+    })
+
+    session["itinerary_stops"] = reordered
+    # Reset leg metadata for new order
+    n = len(reordered)
+    session["leg_transport_modes"] = {i: "flight" for i in range(n)}
+    session["days_per_stop"] = {i: 2 for i in range(n)}
+
+
+def record_edit(session_id: str, edit_type: str, params: dict) -> None:
+    """Record an edit to the session's edit history."""
+    session = _sessions.get(session_id)
+    if session:
+        session["edit_history"].append({"type": edit_type, "params": params})
 
 
 def add_rejected_destination(session_id: str, destination_name: str) -> None:

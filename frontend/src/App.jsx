@@ -3,50 +3,55 @@ import SearchInterface from './components/SearchInterface'
 import LoadingOverlay from './components/LoadingOverlay'
 import ResultsGrid from './components/ResultsGrid'
 import BookingModal from './components/BookingModal'
-import MatchChatScreen from './screens/MatchChatScreen'
+import PlanView from './screens/PlanView'
 
 const API_BASE = 'http://localhost:8000'
 
-// Curated destination pool for client-side vibe refinement
+// Curated client-side destination pool for vibe refinement fallback
 const DESTINATION_POOL = [
-  { id: 'D1', name: 'Rishikesh', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2670&auto=format&fit=crop', tags: ['ADVENTURE', 'RAFTING', 'SPIRITUAL'], match_score: 93, reasoning: 'The Adventure Capital of India. Bungee jumping, white-water rafting and yoga on the banks of the Ganges.', flight_price: 9500, hotel_price: 12000, best_month: 'September', rating: 4.6, vibes: ['More Adventure', 'More Nature'] },
-  { id: 'D2', name: 'Hampi', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?q=80&w=2666&auto=format&fit=crop', tags: ['HERITAGE', 'RUINS', 'OFFBEAT'], match_score: 87, reasoning: 'Ancient Vijayanagara Empire ruins scattered among dramatic boulder landscapes. Ultra budget-friendly with hostels from ₹500/night.', flight_price: 5500, hotel_price: 4500, best_month: 'February', rating: 4.5, vibes: ['Stricter Budget', 'More Nature'] },
-  { id: 'D3', name: 'Udaipur', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=2670&auto=format&fit=crop', tags: ['LUXURY', 'HERITAGE', 'ROMANCE'], match_score: 95, reasoning: 'The City of Lakes. Palatial hotels on shimmering water, hand-embroidered Rajasthani textiles, and magical sunset boat rides.', flight_price: 11000, hotel_price: 55000, best_month: 'November', rating: 4.9, vibes: ['More Luxury', 'More Couple Focus'] },
-  { id: 'D4', name: 'Coorg', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=2670&auto=format&fit=crop', tags: ['NATURE', 'COFFEE', 'TREKKING'], match_score: 88, reasoning: 'The Scotland of India. Misty coffee plantations, cascading waterfalls, and lush green hills perfect for family escapes.', flight_price: 10000, hotel_price: 22000, best_month: 'October', rating: 4.7, vibes: ['More Nature', 'More Adventure', 'Family Friendly'] },
-  { id: 'D5', name: 'Jaisalmer', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=2672&auto=format&fit=crop', tags: ['DESERT', 'GOLDEN', 'CULTURE'], match_score: 91, reasoning: 'The Golden City rising from the Thar Desert. Camel safaris at dusk and folk musicians in ancient sandstone havelis.', flight_price: 14000, hotel_price: 18000, best_month: 'December', rating: 4.8, vibes: ['More Adventure', 'More Luxury', 'More Couple Focus'] },
-  { id: 'D6', name: 'Andaman Islands', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1590523277543-a94d2e4eb00b?q=80&w=2669&auto=format&fit=crop', tags: ['BEACH', 'SCUBA', 'TROPICAL'], match_score: 96, reasoning: 'Crystal-clear turquoise waters and pristine coral reefs. World-class SCUBA diving at Havelock Island.', flight_price: 22000, hotel_price: 30000, best_month: 'November', rating: 4.8, vibes: ['More Adventure', 'Beachfront', 'More Couple Focus'] },
-  { id: 'D7', name: 'Leh-Ladakh', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=2670&auto=format&fit=crop', tags: ['ALTITUDE', 'MONASTERY', 'ADVENTURE'], match_score: 94, reasoning: 'The roof of the world. Dramatic high-altitude deserts, ancient monasteries and Pangong Lake at 14,000 ft.', flight_price: 19000, hotel_price: 25000, best_month: 'August', rating: 4.9, vibes: ['More Adventure', 'Mountain Views', 'More Nature'] },
-  { id: 'D8', name: 'Alleppey', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=2670&auto=format&fit=crop', tags: ['BACKWATERS', 'HOUSEBOAT', 'SERENE'], match_score: 86, reasoning: 'The Venice of the East. Float through emerald Kerala backwaters on a traditional houseboat with your family or partner.', flight_price: 14000, hotel_price: 28000, best_month: 'August', rating: 4.7, vibes: ['More Couple Focus', 'Family Friendly', 'Beachfront'] },
-  { id: 'D9', name: 'Goa', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=2674&auto=format&fit=crop', tags: ['BEACH', 'PARTY', 'NIGHTLIFE'], match_score: 82, reasoning: 'Sun-soaked beaches, world-class beach shacks and an electric nightlife scene. Great value for money.', flight_price: 10000, hotel_price: 25000, best_month: 'December', rating: 4.4, vibes: ['Beachfront', 'More Luxury', 'City Vibes', 'Stricter Budget'] },
-  { id: 'D10', name: 'Varanasi', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1561361058-c24e0cb36c08?q=80&w=2684&auto=format&fit=crop', tags: ['SPIRITUAL', 'CULTURAL', 'HERITAGE'], match_score: 88, reasoning: 'One of the oldest living cities on Earth. The nightly Ganga Aarti ceremony is a once-in-a-lifetime spectacle.', flight_price: 8000, hotel_price: 10000, best_month: 'November', rating: 4.5, vibes: ['Stricter Budget', 'City Vibes', 'Family Friendly'] },
-  { id: 'D11', name: 'Manali', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=2670&auto=format&fit=crop', tags: ['SNOW', 'MOUNTAINS', 'HONEYMOON'], match_score: 90, reasoning: 'Snow-capped Himalayan peaks, apple orchards, and the iconic Rohtang Pass. Perfect for couples and thrill-seekers.', flight_price: 13000, hotel_price: 20000, best_month: 'January', rating: 4.6, vibes: ['More Adventure', 'More Couple Focus', 'Mountain Views'] },
-  { id: 'D12', name: 'Ooty', country: 'INDIA', image_url: 'https://images.unsplash.com/photo-1622279457486-7e72a7c17e55?q=80&w=2670&auto=format&fit=crop', tags: ['HILLS', 'NATURE', 'FAMILY'], match_score: 83, reasoning: 'The Queen of Hill Stations. The Nilgiri Mountain Railway and fragrant eucalyptus forests make this the perfect family retreat.', flight_price: 8500, hotel_price: 14000, best_month: 'May', rating: 4.5, vibes: ['Family Friendly', 'More Nature', 'Stricter Budget'] },
+  { id: 'D1', name: 'Rishikesh', image_url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=1200', tags: ['ADVENTURE', 'RAFTING', 'SPIRITUAL'], match_score: 93, flight_price: 9500, hotel_price: 12000, vibes: ['More Adventure', 'More Nature'] },
+  { id: 'D2', name: 'Hampi', image_url: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?q=80&w=1200', tags: ['HERITAGE', 'RUINS', 'OFFBEAT'], match_score: 87, flight_price: 5500, hotel_price: 4500, vibes: ['Stricter Budget', 'More Nature'] },
+  { id: 'D3', name: 'Udaipur', image_url: 'https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=1200', tags: ['LUXURY', 'HERITAGE', 'ROMANCE'], match_score: 95, flight_price: 11000, hotel_price: 55000, vibes: ['More Luxury', 'More Couple Focus'] },
+  { id: 'D4', name: 'Coorg', image_url: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=1200', tags: ['NATURE', 'COFFEE', 'TREKKING'], match_score: 88, flight_price: 10000, hotel_price: 22000, vibes: ['More Nature', 'More Adventure', 'Family Friendly'] },
+  { id: 'D5', name: 'Jaisalmer', image_url: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=1200', tags: ['DESERT', 'GOLDEN', 'CULTURE'], match_score: 91, flight_price: 14000, hotel_price: 18000, vibes: ['More Adventure', 'More Luxury', 'More Couple Focus'] },
+  { id: 'D6', name: 'Andaman Islands', image_url: 'https://images.unsplash.com/photo-1590523277543-a94d2e4eb00b?q=80&w=1200', tags: ['BEACH', 'SCUBA', 'TROPICAL'], match_score: 96, flight_price: 22000, hotel_price: 30000, vibes: ['More Adventure', 'Beachfront', 'More Couple Focus'] },
+  { id: 'D7', name: 'Leh-Ladakh', image_url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=1200', tags: ['ALTITUDE', 'MONASTERY', 'ADVENTURE'], match_score: 94, flight_price: 19000, hotel_price: 25000, vibes: ['More Adventure', 'Mountain Views', 'More Nature'] },
+  { id: 'D8', name: 'Alleppey', image_url: 'https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=1200', tags: ['BACKWATERS', 'HOUSEBOAT', 'SERENE'], match_score: 86, flight_price: 14000, hotel_price: 28000, vibes: ['More Couple Focus', 'Family Friendly', 'Beachfront'] },
+  { id: 'D9', name: 'Goa', image_url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=1200', tags: ['BEACH', 'PARTY', 'NIGHTLIFE'], match_score: 82, flight_price: 10000, hotel_price: 25000, vibes: ['Beachfront', 'More Luxury', 'City Vibes', 'Stricter Budget'] },
+  { id: 'D10', name: 'Varanasi', image_url: 'https://images.unsplash.com/photo-1561361058-c24e0cb36c08?q=80&w=1200', tags: ['SPIRITUAL', 'CULTURAL', 'HERITAGE'], match_score: 88, flight_price: 8000, hotel_price: 10000, vibes: ['Stricter Budget', 'City Vibes', 'Family Friendly'] },
+  { id: 'D11', name: 'Manali', image_url: 'https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=1200', tags: ['SNOW', 'MOUNTAINS', 'HONEYMOON'], match_score: 90, flight_price: 13000, hotel_price: 20000, vibes: ['More Adventure', 'More Couple Focus', 'Mountain Views'] },
+  { id: 'D12', name: 'Ooty', image_url: 'https://images.unsplash.com/photo-1622279457486-7e72a7c17e55?q=80&w=1200', tags: ['HILLS', 'NATURE', 'FAMILY'], match_score: 83, flight_price: 8500, hotel_price: 14000, vibes: ['Family Friendly', 'More Nature', 'Stricter Budget'] },
 ]
 
 export default function App() {
-  const [appState, setAppState] = useState('search') // 'search' | 'loading' | 'results'
+  // ── App state machine ────────────────────────────────────────────────────
+  // 'home' | 'loading' | 'results' | 'plan' | 'confirm'
+  const [appState, setAppState] = useState('home')
 
-  // Dual Input Flow Data
+  // Search form parameters
   const [imagePreview, setImagePreview] = useState(null)
   const [chatInput, setChatInput] = useState('')
-
-  // Trip Configuration
   const [originCity, setOriginCity] = useState('Mumbai')
   const [travelMonth, setTravelMonth] = useState('December')
   const [selectedVibes, setSelectedVibes] = useState([])
+  const [budget, setBudget] = useState(100000)
+  const [durationDays, setDurationDays] = useState(5)
 
-  // Persistent State
+  // Results state
+  const [results, setResults] = useState([])
+  const [sessionId, setSessionId] = useState(null)
+  const [vibeTagsFromSearch, setVibeTagsFromSearch] = useState([])
+  const [routeJustification, setRouteJustification] = useState('')
+  const [error, setError] = useState(null)
+
+  // Plan / booking state
+  const [selectedItinerary, setSelectedItinerary] = useState(null)
+  const [bookingTarget, setBookingTarget] = useState(null)
+
+  // Persistent
   const [recentSearches, setRecentSearches] = useState([])
   const [rejectedIds, setRejectedIds] = useState([])
   const [activeVibes, setActiveVibes] = useState([])
-
-  // Responses
-  const [results, setResults] = useState([])
-  const [error, setError] = useState(null)
-  const [sessionId, setSessionId] = useState(null)
-
-  // Booking Modal State
-  const [bookingModalTarget, setBookingModalTarget] = useState(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('vibeTravel_recentSearches')
@@ -54,121 +59,94 @@ export default function App() {
   }, [])
 
   const saveSearch = (query) => {
-    if (!query.trim()) return;
+    if (!query?.trim()) return
     const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 10)
     setRecentSearches(updated)
     localStorage.setItem('vibeTravel_recentSearches', JSON.stringify(updated))
   }
 
+  // ── Search handler ────────────────────────────────────────────────────────
   const handleSearch = useCallback(async (isReroll = false) => {
     setError(null)
     setAppState('loading')
-
     if (!isReroll && chatInput) saveSearch(chatInput)
 
     try {
-      // Create flexible payload mapping logic here
-      const formData = new FormData()
+      let data
+
+      // Determine search mode
       if (imagePreview) {
-        // Fetch blob from preview URL (hack for demo/client upload)
-        const res = await fetch(imagePreview)
-        const blob = await res.blob()
+        // Image-based search → /itineraries
+        const formData = new FormData()
+        const res0 = await fetch(imagePreview)
+        const blob = await res0.blob()
         formData.append('photo', blob, 'upload.jpg')
-      }
+        formData.append('budget', String(budget))
+        formData.append('travel_dates', travelMonth)
 
-      formData.append('budget', "100000") // Default budget for dummy if needed
-      formData.append('travel_dates', travelMonth)
+        let res
+        try {
+          res = await fetch(`${API_BASE}/itineraries`, { method: 'POST', body: formData })
+        } catch {
+          res = null
+        }
 
-      // In a fully integrated system we would send chatInput, originCity, selectedVibes, rejectedIds
-      // formData.append('prompt', chatInput)
-      // formData.append('origin', originCity)
-      // formData.append('vibes', JSON.stringify(selectedVibes))
-      // formData.append('rejected_ids', JSON.stringify(isReroll ? rejectedIds : []))
-
-      // Keep it compatible with existing backend (now /itineraries)
-      let res;
-      try {
-        res = await fetch(`${API_BASE}/itineraries`, { method: 'POST', body: formData })
-      } catch (e) {
-        // Mock fallback if API is unreachable during dev
-        console.warn("API unreachable, falling back to mock data");
-        await new Promise(r => setTimeout(r, 6000));
-        res = {
-          ok: true,
-          json: async () => ({
-            session_id: 'mock-session-123',
-            itineraries: [
-              {
-                type: "1-stop",
-                label: "Quick Escape",
-                stops: [{
-                  destination: "Gulmarg", tbo_id: 1, photo: "https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=2670&auto=format&fit=crop", price_per_person: 63500, hotels: []
-                }],
-                total_price: 63500,
-                region: "North India",
-                stop_count: 1
-              },
-              {
-                type: "2-stop",
-                label: "Weekend Explorer",
-                stops: [
-                  { destination: "Gulmarg", tbo_id: 1, photo: "https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=2670&auto=format&fit=crop", price_per_person: 55000, hotels: [] },
-                  { destination: "Srinagar", tbo_id: 2, photo: "https://images.unsplash.com/photo-1593693397690-362bc9ac425d?q=80&w=2669&auto=format&fit=crop", price_per_person: 45000, hotels: [] }
-                ],
-                total_price: 100000,
-                region: "North India",
-                stop_count: 2
-              }
-            ],
-            vibe_tags: ["SNOW", "MOUNTAINS", "ADVENTURE"],
-            match_reasons: ["scenic views", "winter sports", "beautiful landscapes"],
-            conversation_opener: "Your photo matched perfectly with a journey through North India!",
-            region: "North India"
+        if (res?.ok) {
+          data = await res.json()
+        } else {
+          // Mock fallback for image path
+          await new Promise(r => setTimeout(r, 1800))
+          data = _mockData()
+        }
+      } else {
+        // Text-based search → /search
+        const query = chatInput || 'Weekend trip in India'
+        let res
+        try {
+          res = await fetch(`${API_BASE}/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query,
+              budget,
+              duration_days: durationDays,
+              travel_month: travelMonth,
+              vibes: selectedVibes,
+              origin_city: originCity,
+            }),
           })
+        } catch {
+          res = null
+        }
+
+        if (res?.ok) {
+          data = await res.json()
+        } else {
+          await new Promise(r => setTimeout(r, 1800))
+          data = _mockData()
         }
       }
 
-      if (!res.ok) {
-        let errorMsg = 'Match failed'
-        try { const err = await res.json(); errorMsg = err.detail || errorMsg } catch (e) { }
-        throw new Error(errorMsg)
-      }
-
-      const data = await res.json()
-
       setResults(data.itineraries || [])
       setSessionId(data.session_id)
+      setVibeTagsFromSearch(data.vibe_tags || [])
+      setRouteJustification(data.route_justification || '')
       setAppState('results')
 
     } catch (err) {
-      setError(err.message)
-      setAppState('search')
+      setError(err.message || 'Something went wrong. Please try again.')
+      setAppState('home')
     }
-  }, [chatInput, imagePreview, originCity, travelMonth, selectedVibes, recentSearches, rejectedIds])
+  }, [chatInput, imagePreview, originCity, travelMonth, selectedVibes, budget, durationDays, recentSearches])
 
-  const handleReroll = () => {
-    // Append current visible to rejected
-    setRejectedIds(prev => [...prev, ...results.map(r => r.id)])
-    handleSearch(true)
-  }
-
-  const handleSurpriseMe = () => {
-    setChatInput("Surprise me with a unique offbeat destination")
-    setTimeout(() => handleSearch(false), 500)
-  }
-
-  const handleRefine = async (vibeString) => {
+  // ── Vibe refinement (client-side re-rank) ─────────────────────────────────
+  const handleRefine = useCallback(async (vibeString) => {
     setAppState('loading')
-    await new Promise(r => setTimeout(r, 1400)) // Simulate AI re-ranking
+    await new Promise(r => setTimeout(r, 900))
 
     const vibeList = vibeString.split(', ').map(v => v.trim())
-
-    // Score each destination by how many selected vibes it matches
     const scored = DESTINATION_POOL
-      .map(dest => ({
-        ...dest,
-        vibeScore: vibeList.filter(v => dest.vibes?.includes(v)).length
-      }))
+      .map(dest => ({ ...dest, vibeScore: vibeList.filter(v => dest.vibes?.includes(v)).length }))
       .filter(d => d.vibeScore > 0)
       .sort((a, b) => b.vibeScore - a.vibeScore || b.match_score - a.match_score)
 
@@ -176,52 +154,97 @@ export default function App() {
       ? scored.slice(0, 3)
       : [...scored, ...DESTINATION_POOL.filter(d => !scored.includes(d))].slice(0, 3)
 
-    // Convert raw destination data to valid itinerary structures expected by the UI
-    const refinedItineraries = refined.map(dest => ({
-      type: "1-stop",
-      label: "Refined Match",
-      stops: [{
-        destination: dest.name,
-        tbo_id: dest.id,
-        photo: dest.image_url,
-        price_per_person: dest.flight_price + dest.hotel_price,
-        hotels: []
-      }],
+    setResults(refined.map(dest => ({
+      type: '1-stop',
+      label: 'Refined Match',
+      stops: [{ destination: dest.name, tbo_id: dest.id, photo: dest.image_url, price_per_person: dest.flight_price + dest.hotel_price, hotels: [] }],
       total_price: dest.flight_price + dest.hotel_price,
-      region: dest.country || "INDIA",
-      stop_count: 1
-    }));
-
-    setResults(refinedItineraries)
+      region: 'INDIA',
+      stop_count: 1,
+    })))
     setAppState('results')
+  }, [])
+
+  const handleReroll = () => {
+    setRejectedIds(prev => [...prev, ...results.map(r => r.id || '')])
+    handleSearch(true)
   }
 
+  const handleSurpriseMe = () => {
+    const surprises = ['Offbeat monsoon destination in India', 'Hidden gem hill station', 'Spiritual journey across Varanasi and Rishikesh']
+    setChatInput(surprises[Math.floor(Math.random() * surprises.length)])
+    setTimeout(() => handleSearch(false), 100)
+  }
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
+  const handleSelectItinerary = (itinerary) => {
+    setSelectedItinerary(itinerary)
+    setAppState('plan')
+  }
+
+  const handlePlanBack = () => setAppState('results')
+
+  const handleConfirmBooking = () => {
+    setBookingTarget(selectedItinerary)
+  }
+
+  const handleBookingConfirmed = () => {
+    setBookingTarget(null)
+    setSelectedItinerary(null)
+    setResults([])
+    setSessionId(null)
+    setAppState('home')
+    setImagePreview(null)
+    setChatInput('')
+    setSelectedVibes([])
+  }
+
+  const handleReset = () => {
+    setAppState('home')
+    setResults([])
+    setError(null)
+    setImagePreview(null)
+    setChatInput('')
+    setSelectedVibes([])
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-mesh text-white font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-hero text-gray-900 font-sans overflow-x-hidden">
 
-      {/* Dynamic Navbar */}
-      <nav className="w-full p-6 flex justify-between items-center max-w-7xl mx-auto z-10 relative">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-            V
+      {/* Navbar — hidden in plan view (PlanView has its own top bar) */}
+      {appState !== 'plan' && (
+        <nav className="navbar-light w-full px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+          <button onClick={handleReset} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
+              <span className="text-white font-black text-sm">V</span>
+            </div>
+            <span className="font-bold text-lg text-gray-900">
+              VibeTravel <span className="text-blue-500 font-normal text-base">AI</span>
+            </span>
+          </button>
+          <div className="hidden md:flex items-center gap-6 text-sm text-gray-500 font-medium">
+            <button onClick={handleReset} className="hover:text-gray-900 transition-colors">Home</button>
+            <span className="text-gray-300">|</span>
+            <span className="text-[11px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1 rounded-full font-semibold">
+              Powered by TBO × Gemini
+            </span>
           </div>
-          <span className="font-bold text-xl tracking-wide">VibeTravel <span className="text-indigo-400 font-normal">engine</span></span>
-        </div>
-        <div className="px-4 py-1.5 rounded-full border border-gray-800 bg-gray-900/50 text-xs text-gray-400 uppercase tracking-widest font-bold">
-          Powered by TBO & Gemini
-        </div>
-      </nav>
+        </nav>
+      )}
 
+      {/* Global error toast */}
       {error && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center shadow-2xl backdrop-blur-md">
-          <span className="mr-2">⚠️</span> {error}
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2 shadow-lg animate-slide-up">
+          <span>⚠️</span> {error}
+          <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-700">✕</button>
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="relative z-10 w-full min-h-[calc(100vh-100px)] flex flex-col justify-center pb-20">
+      {/* Main content */}
+      <main className="relative w-full">
 
-        {appState === 'search' && (
+        {appState === 'home' && (
           <SearchInterface
             imagePreview={imagePreview}
             setImagePreview={setImagePreview}
@@ -233,6 +256,10 @@ export default function App() {
             setTravelMonth={setTravelMonth}
             selectedVibes={selectedVibes}
             setSelectedVibes={setSelectedVibes}
+            budget={budget}
+            setBudget={setBudget}
+            durationDays={durationDays}
+            setDurationDays={setDurationDays}
             recentSearches={recentSearches}
             onSearch={() => handleSearch(false)}
             onSurpriseMe={handleSurpriseMe}
@@ -241,66 +268,78 @@ export default function App() {
 
         {appState === 'loading' && <LoadingOverlay />}
 
-        {appState === 'results' && !bookingModalTarget && (
+        {appState === 'results' && (
           <ResultsGrid
             results={results}
-            onBook={(itinerary) => setBookingModalTarget(itinerary)}
+            onBook={handleSelectItinerary}
             onReroll={handleReroll}
             onRefine={handleRefine}
+            onReset={handleReset}
             rejectedIds={rejectedIds}
             originCity={originCity}
             travelMonth={travelMonth}
             activeVibes={activeVibes}
             setActiveVibes={setActiveVibes}
+            vibeTagsFromSearch={vibeTagsFromSearch}
+            routeJustification={routeJustification}
           />
         )}
 
-        {/* Render MatchChatScreen when a booking/itinerary is selected */}
-        {appState === 'results' && bookingModalTarget && (
-          <div className="w-full absolute inset-0 z-50 bg-[#0a0a0a] min-h-screen pb-20 overflow-y-auto">
-            <div className="p-4 flex gap-4 bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
-              <button onClick={() => setBookingModalTarget(null)} className="text-gray-400 hover:text-white flex items-center gap-2 font-medium">
-                ← Back to Options
-              </button>
-            </div>
-
-            <MatchChatScreen
-              matchData={{
-                matched_destination: bookingModalTarget.stops.map(s => s.destination).join(" → ") || "Journey",
-                destination_photo: bookingModalTarget.stops[0]?.photo || "",
-                price_per_person: bookingModalTarget.total_price,
-                match_reasons: results.find(r => r === bookingModalTarget)?.match_reasons || ["Custom Journey"],
-                hotels: bookingModalTarget.stops.flatMap(s => s.hotels || []),
-                tagline: bookingModalTarget.label,
-                stops: bookingModalTarget.stops
-              }}
-              uploadedPhoto={imagePreview}
-              apiBase={API_BASE}
-              onSendMessage={async (text) => {
-                const res = await fetch(`${API_BASE}/chat`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ session_id: sessionId, message: text })
-                })
-                if (!res.ok) throw new Error("Chat failed")
-                return await res.json()
-              }}
-              onConfirm={async () => {
-                await fetch(`${API_BASE}/confirm`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ session_id: sessionId })
-                })
-                // Currently, we just alert since the flow stops here in the demo
-                alert("Booking Confirmed!")
-                setBookingModalTarget(null)
-                setAppState('search')
-              }}
-            />
-          </div>
+        {appState === 'plan' && selectedItinerary && (
+          <PlanView
+            itinerary={{
+              ...selectedItinerary,
+              conversation_opener: results.find(r => r === selectedItinerary)?.conversation_opener || undefined,
+              route_justification: routeJustification,
+            }}
+            sessionId={sessionId}
+            apiBase={API_BASE}
+            onBack={handlePlanBack}
+            onConfirm={handleConfirmBooking}
+            uploadedPhoto={imagePreview}
+          />
         )}
+
       </main>
+
+      {/* Booking Modal (overlay on results or plan views) */}
+      {bookingTarget && (
+        <BookingModal
+          itinerary={bookingTarget}
+          sessionId={sessionId}
+          onClose={() => setBookingTarget(null)}
+          onConfirmed={handleBookingConfirmed}
+        />
+      )}
 
     </div>
   )
+}
+
+// ── Mock data fallback ────────────────────────────────────────────────────────
+function _mockData() {
+  return {
+    session_id: 'mock-' + Math.random().toString(36).slice(2, 8),
+    itineraries: [
+      {
+        type: '1-stop', label: 'Quick Escape',
+        stops: [{ destination: 'Jaisalmer', tbo_id: 'JAISALMER_FAKE_020', photo: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=1200', price_per_person: 32000, hotels: [], tagline: 'The Golden City of the Thar Desert', flight_min_fare: 14000 }],
+        total_price: 32000, region: 'Rajasthan', stop_count: 1,
+      },
+      {
+        type: '2-stop', label: 'Weekend Explorer',
+        stops: [
+          { destination: 'Jaipur', tbo_id: 'JAIPUR_FAKE_012', photo: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?q=80&w=1200', price_per_person: 28000, hotels: [], tagline: 'The Pink City of Kings', flight_min_fare: 11000 },
+          { destination: 'Jodhpur', tbo_id: 'JODHPUR_FAKE_016', photo: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?q=80&w=1200', price_per_person: 22000, hotels: [], tagline: 'The Blue City at the edge of the desert', flight_min_fare: 10000 },
+        ],
+        total_price: 50000, region: 'Rajasthan', stop_count: 2,
+      },
+    ],
+    vibe_tags: ['heritage', 'desert', 'cultural'],
+    match_reasons: ['rich heritage', 'desert landscapes', 'Rajasthani culture'],
+    itinerary_narrative: 'An immersive journey through the royal cities of Rajasthan.',
+    conversation_opener: "We've found a stunning Rajasthan journey for you! Which stop are you most excited about?",
+    route_justification: 'This Rajasthan circuit is geographically efficient — Jaipur and Jodhpur are 335 km apart by road, making this a smooth two-city journey without backtracking.',
+    region: 'Rajasthan',
+  }
 }

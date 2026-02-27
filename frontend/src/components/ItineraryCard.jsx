@@ -1,113 +1,149 @@
 import React from 'react';
-import { MapPin, ArrowRight, Navigation, Plane, Building2 } from 'lucide-react';
+import { MapPin, ArrowRight, Plane, Train, Bus } from 'lucide-react';
 
-export default function ItineraryCard({ itinerary, onSelect, travelMonth, originCity, index }) {
-    if (!itinerary) return null;
+const TRANSPORT_ICONS = {
+    flight: <Plane size={12} />,
+    train: <Train size={12} />,
+    bus: <Bus size={12} />,
+};
 
+function RouteConnector({ transport = 'flight' }) {
     return (
-        <div className="card flex flex-col h-full bg-gray-900 relative group border-gray-800/80 transition-all duration-300 hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/10">
-
-            {/* Header Area with Type Badge */}
-            <div className="p-5 border-b border-gray-800/80 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent"></div>
-
-                <div className="flex justify-between items-start relative z-10 mb-2">
-                    <span className="text-indigo-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1">
-                        <Navigation size={12} /> {itinerary.region}
-                    </span>
-                    <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wider uppercase">
-                        {itinerary.label} ({itinerary.type})
-                    </span>
-                </div>
-
-                <h3 className="text-xl font-bold text-white relative z-10">{itinerary.stops.length} Stop Journey</h3>
-            </div>
-
-            {/* Stops Strip */}
-            <div className="p-5 flex-1 flex flex-col gap-4">
-                <div className="space-y-4 relative">
-                    {/* Connecting line */}
-                    {itinerary.stops.length > 1 && (
-                        <div className="absolute left-6 pl-[1px] top-6 bottom-6 w-px bg-gray-800 z-0"></div>
-                    )}
-
-                    {itinerary.stops.map((stop, i) => (
-                        <div key={stop.tbo_id} className="relative z-10">
-                            {/* Destination row */}
-                            <div className="flex gap-3 items-center mb-2">
-                                <img
-                                    src={stop.photo?.startsWith('http') ? stop.photo : `http://localhost:8000/${stop.photo}`}
-                                    alt={stop.destination}
-                                    className="w-12 h-12 rounded-lg object-cover ring-2 ring-gray-900 shadow-lg"
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-bold text-white truncate">{stop.destination}</h4>
-                                    <p className="text-xs text-gray-400 truncate mt-0.5">{stop.tagline || 'Scenic destination'}</p>
-                                </div>
-                            </div>
-
-                            {/* Price chips for this stop */}
-                            <div className="ml-15 pl-[60px] flex flex-wrap gap-2 text-[11px]">
-                                {/* Hotel price */}
-                                {stop.price_per_person != null && (
-                                    <div className="flex flex-col">
-                                        <span className="flex items-center gap-1 bg-gray-800/70 text-gray-200 px-2 py-0.5 rounded-full">
-                                            <Building2 size={10} className="text-emerald-400" />
-                                            Hotel: ₹{Math.round(stop.price_per_person / 5).toLocaleString('en-IN')}/night
-                                        </span>
-                                        {stop.hotel_price_date_label && (
-                                            <span className="text-[9px] text-gray-500 mt-0.5 pl-1">
-                                                (avail. for {stop.hotel_price_date_label})
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                                {/* Flight price */}
-                                {stop.flight_min_fare != null ? (
-                                    <span className="flex items-center gap-1 bg-gray-800/70 text-gray-200 px-2 py-0.5 rounded-full">
-                                        <Plane size={10} className="text-sky-400" />
-                                        Flight: ₹{stop.flight_min_fare.toLocaleString('en-IN')}
-                                    </span>
-                                ) : (
-                                    <span className="flex items-center gap-1 bg-gray-800/50 text-gray-500 px-2 py-0.5 rounded-full">
-                                        <Plane size={10} />
-                                        Flight: checking...
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Total Pricing */}
-            <div className="p-5 pt-0 mt-auto">
-                <div className="mt-4 pt-4 border-t border-gray-800 text-sm">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-3">
-                        Hotel total for {travelMonth} from {originCity}
-                    </p>
-                    <div className="flex justify-between items-end">
-                        <span className="text-gray-300 font-medium tracking-wide">Total Hotel Cost</span>
-                        <span className="text-2xl font-bold text-white tracking-tight">
-                            ₹{itinerary.total_price?.toLocaleString('en-IN') || "N/A"}
-                        </span>
-                    </div>
-                    {itinerary.stops.some(s => s.hotel_price_date_label) && (
-                        <p className="text-[9px] text-amber-500/70 mt-1 text-right">
-                            * Some prices shown for alternate availability dates
-                        </p>
-                    )}
-                </div>
-
-                {/* Select Action */}
-                <button
-                    onClick={() => onSelect(itinerary)}
-                    className={`w-full mt-5 py-3 rounded-xl font-semibold flex flex-row items-center justify-center gap-2 transition-all ${index === 0 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-800 text-white hover:bg-gray-700'}`}
-                >
-                    Plan This Trip <ArrowRight size={16} />
-                </button>
-            </div>
+        <div className="flex items-center gap-1 flex-none">
+            <div className="h-px w-6 bg-blue-200" />
+            <span className="transport-badge">{TRANSPORT_ICONS[transport] || <Plane size={12} />}</span>
+            <div className="h-px w-6 bg-blue-200" />
         </div>
     );
 }
 
+export default function ItineraryCard({ itinerary, onSelect, travelMonth, originCity, index }) {
+    const { type, label, stops, total_price, region, stop_count } = itinerary;
+
+    const typeColors = {
+        '1-stop': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        '2-stop': 'bg-blue-50 text-blue-700 border-blue-200',
+        '3-stop': 'bg-violet-50 text-violet-700 border-violet-200',
+    };
+
+    const primaryPhoto = stops[0]?.photo;
+    const heroUrl = primaryPhoto?.startsWith('http')
+        ? primaryPhoto
+        : primaryPhoto ? `http://localhost:8000/${primaryPhoto}` : null;
+
+    return (
+        <div className="card-light overflow-hidden flex flex-col animate-slide-up" style={{ animationDelay: `${index * 80}ms` }}>
+            {/* Hero image with stop photos */}
+            <div className="relative h-48 overflow-hidden">
+                {heroUrl
+                    ? <img src={heroUrl} alt={stops[0]?.destination} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    : <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                        <MapPin size={40} className="text-blue-300" />
+                    </div>
+                }
+                {/* Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                {/* Journey type badge */}
+                <div className="absolute top-3 left-3">
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${typeColors[type] || typeColors['1-stop']}`}>
+                        {label}
+                    </span>
+                </div>
+
+                {/* Stop count */}
+                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-gray-700 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                    {stop_count} {stop_count === 1 ? 'city' : 'cities'}
+                </div>
+
+                {/* Destination name */}
+                <div className="absolute bottom-3 left-3 right-3">
+                    <p className="text-[10px] text-white/70 font-semibold uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <MapPin size={9} /> {region}
+                    </p>
+                    <h3 className="text-white font-bold text-lg leading-tight">
+                        {stops.map(s => s.destination).join(' → ')}
+                    </h3>
+                </div>
+            </div>
+
+            {/* Route diagram */}
+            {stops.length > 1 && (
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                    <div className="flex items-center flex-wrap gap-1">
+                        {originCity && (
+                            <>
+                                <span className="text-[11px] font-medium text-gray-400">{originCity}</span>
+                                <RouteConnector transport="flight" />
+                            </>
+                        )}
+                        {stops.map((stop, i) => (
+                            <React.Fragment key={stop.destination}>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 flex-none" />
+                                    <span className="text-[11px] font-bold text-gray-700">{stop.destination}</span>
+                                </div>
+                                {i < stops.length - 1 && <RouteConnector transport="flight" />}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Details */}
+            <div className="p-4 flex-1 flex flex-col gap-3">
+                {/* Stop thumbnails for multi-stop */}
+                {stops.length > 1 && (
+                    <div className="flex gap-2">
+                        {stops.slice(1).map((stop, i) => {
+                            const url = stop.photo?.startsWith('http') ? stop.photo : stop.photo ? `http://localhost:8000/${stop.photo}` : null;
+                            return (
+                                <div key={i} className="flex-1 rounded-lg overflow-hidden h-14 bg-gray-100 relative">
+                                    {url
+                                        ? <img src={url} alt={stop.destination} className="w-full h-full object-cover" />
+                                        : <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center text-xs text-gray-400 font-medium">{stop.destination[0]}</div>
+                                    }
+                                    <div className="absolute inset-0 bg-black/30 flex items-end p-1">
+                                        <span className="text-white text-[9px] font-bold">{stop.destination}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Tagline */}
+                {stops[0]?.tagline && (
+                    <p className="text-xs text-gray-500 italic leading-relaxed line-clamp-2">
+                        "{stops[0].tagline}"
+                    </p>
+                )}
+
+                {/* Travel month */}
+                {travelMonth && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <span>📅</span>
+                        <span>Best for {travelMonth} travel</span>
+                    </div>
+                )}
+
+                {/* Price */}
+                <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-0.5">Total per person</p>
+                        <div className="flex items-baseline gap-1">
+                            <span className="price-large">₹{total_price.toLocaleString('en-IN')}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-0.5">incl. flights + hotels</p>
+                    </div>
+                    <button
+                        onClick={() => onSelect(itinerary)}
+                        className="btn-primary px-5 py-2.5 text-sm"
+                    >
+                        Plan this <ArrowRight size={14} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
