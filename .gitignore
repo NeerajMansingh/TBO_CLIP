@@ -32,3 +32,4 @@ frontend/.env
 .idea/
 .vscode/
 *.swp
+backend/destinations.tar.xz

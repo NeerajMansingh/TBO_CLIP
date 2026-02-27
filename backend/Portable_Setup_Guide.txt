@@ -1,0 +1,38 @@
+# 🚚 VibeTravel Portable AI Setup Guide
+
+**🛡️ ZERO INTERFERENCE GUARANTEE:**
+This setup uses a "Virtual Environment" (a folder called `venv`). Everything it installs stays INSIDE that folder. It will **not** modify your system, install global programs, or touch your other files. When finished, just delete this whole project folder and your PC will be exactly as it was.
+
+---
+
+## 🏗️ 1. Files you need to have in one folder:
+- `destinations/` (The photo database)
+- `generate_embeddings.py` (The main engine)
+- `clip_utils.py` (Helper script)
+- `requirements.txt` (List of AI libraries)
+- `RUN_ME_WINDOWS.bat` (Shortcut for Windows users)
+
+---
+
+## 🚀 2. How to Run (Windows)
+1. **Install Python 3.10+** from [python.org](https://www.python.org/downloads/). 
+   - **IMPORTANT**: During installation, check the box **"Add Python to PATH"**.
+2. **Double-click `RUN_ME_WINDOWS.bat`**.
+3. That's it. It will build the isolated environment and start automatically.
+
+---
+
+## 🚀 3. How to Run (Mac or Linux)
+1. **Open Terminal** in this folder.
+2. Create isolated bubble: `python3 -m venv venv`
+3. Enter bubble: `source venv/bin/activate`
+4. Install libraries: `pip install -r requirements.txt`
+5. Start: `python3 generate_embeddings.py`
+
+---
+
+## 🏁 4. Final Step
+Wait for the script to finish. It will create a single final file:
+**`destination_embeddings.json`**
+
+Send this file back! You can then safely delete everything else.
