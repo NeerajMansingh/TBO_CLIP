@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 from huggingface_hub import snapshot_download
+#comment
 
 logger = logging.getLogger(__name__)
 
