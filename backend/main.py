@@ -122,7 +122,7 @@ _JOURNEY_LABELS = {
 
 # Fallback photos for destinations not in the limited ChromaDB sample
 _FALLBACK_PHOTOS = {
-    "Jaisalmer": "https://images.unsplash.com/photo-1599818817477-90c74b99813b?q=80&w=2672&auto=format&fit=crop", # Proper desert/fort photo
+    "Jaisalmer": "destinations/jaisalmer/1.jpg",  # Local photo, same format as ChromaDB entries
     "Udaipur": "https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=2670&auto=format&fit=crop",
     "Leh-Ladakh": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=2670&auto=format&fit=crop",
     "Alleppey": "https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=2670&auto=format&fit=crop",
