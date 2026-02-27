@@ -225,6 +225,7 @@ async def build_itineraries(
                 "price_per_person": tbo_data["price_per_person"],
                 "hotels": tbo_data["hotels"],
                 "flight_min_fare": tbo_data.get("flight_min_fare"),
+                "hotel_price_date_label": tbo_data.get("hotel_price_date_label"),  # None or "YYYY-MM-DD to YYYY-MM-DD"
                 "tagline": tbo_data.get("tagline", ""),
                 "best_season": tbo_data.get("best_season", ""),
             })

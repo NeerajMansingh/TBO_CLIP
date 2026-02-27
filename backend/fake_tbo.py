@@ -12,11 +12,11 @@ TBO_FLIGHT_SEARCH_URL = "http://api.tektravels.com/BookingEngineService_Air/AirS
 
 
 def _hotel_user() -> str:
-    return os.getenv("TBO_API_USER", "Hackathon")
+    return os.getenv("TBO_HOTEL_USER", os.getenv("TBO_API_USER", "Hackathon"))
 
 
 def _hotel_pass() -> str:
-    return os.getenv("TBO_API_PASSWORD", "Hackathon@1234")
+    return os.getenv("TBO_HOTEL_PASSWORD", os.getenv("TBO_API_PASSWORD", "Hackathon@1234"))
 
 
 def _flight_user() -> str:
@@ -148,10 +148,12 @@ def get_budget_tier(budget: int) -> str:
 
 async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: str) -> Optional[float]:
     """
-    Check flights via TBO UAT and return the minimum PublishedFare (INR) for 1 adult.
-    UAT only has results for BOM-based routes (BOM->BLR confirmed with 111 flights).
-    Returns None if auth fails or no results found.
+    Search TBO for DEL -> dest_airport flights (real fare for this destination).
+    Falls back to DEL -> BLR proxy if the destination airport has no UAT inventory.
+    Returns the minimum PublishedFare (INR) for 1 adult, or None on auth failure.
     """
+    FALLBACK_AIRPORT = "BLR"  # DEL->BLR confirmed: 111 flights, always available in UAT
+
     try:
         # 1. Authenticate
         auth_data = {
@@ -169,43 +171,53 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
             logger.warning(f"TBO Flight auth failed: {auth_json.get('Error')}")
             return None
 
-        # 2. Search using UAT-confirmed working route (BOM->BLR has 111 results in UAT)
-        # DEL-based routes return error 25 (no results) in the Hackathon UAT environment
         dep_date = f"{datetime.now() + timedelta(days=30):%Y-%m-%dT00:00:00}"
-        search_data = {
-            "EndUserIp": "127.0.0.1",
-            "TokenId": auth_token,
-            "AdultCount": "1",
-            "ChildCount": "0",
-            "InfantCount": "0",
-            "JourneyType": "1",
-            "Segments": [
-                {
-                    "Origin": "BOM",
-                    "Destination": "BLR",
+
+        # 2. Try real destination first, fall back to proxy if no results
+        airports_to_try = [dest_airport]
+        if dest_airport != FALLBACK_AIRPORT:
+            airports_to_try.append(FALLBACK_AIRPORT)
+
+        for airport in airports_to_try:
+            is_fallback = (airport == FALLBACK_AIRPORT and airport != dest_airport)
+            search_data = {
+                "EndUserIp": "127.0.0.1",
+                "TokenId": auth_token,
+                "AdultCount": "1",
+                "ChildCount": "0",
+                "InfantCount": "0",
+                "JourneyType": "1",
+                "Segments": [{
+                    "Origin": "DEL",
+                    "Destination": airport,
                     "FlightCabinClass": "1",
                     "PreferredDepartureTime": dep_date,
                     "PreferredArrivalTime": dep_date
-                }
-            ]
-        }
+                }]
+            }
+            res_search = await client.post(TBO_FLIGHT_SEARCH_URL, json=search_data, timeout=120.0)
+            response_data = res_search.json().get("Response", {})
 
-        res_search = await client.post(TBO_FLIGHT_SEARCH_URL, json=search_data, timeout=60.0)
-        response_data = res_search.json().get("Response", {})
+            if response_data.get("ResponseStatus") == 1 and response_data.get("Results"):
+                flights = response_data["Results"][0]
+                fares = [
+                    float(f.get("Fare", {}).get("PublishedFare", 0))
+                    for f in flights
+                    if f.get("Fare", {}).get("PublishedFare")
+                ]
+                min_fare = min(fares) if fares else None
+                if min_fare:
+                    route = f"DEL->{airport}"
+                    label = f"{route} (proxy)" if is_fallback else route
+                    logger.info(f"TBO flight OK: {label} | {len(flights)} flights | min fare: Rs{min_fare:.0f}")
+                    return min_fare
 
-        if response_data.get("ResponseStatus") == 1 and response_data.get("Results"):
-            flights = response_data["Results"][0]  # first sector's flight list
-            fares = [
-                float(f.get("Fare", {}).get("PublishedFare", 0))
-                for f in flights
-                if f.get("Fare", {}).get("PublishedFare")
-            ]
-            min_fare = min(fares) if fares else None
-            logger.info(
-                f"TBO UAT flight connectivity confirmed (BOM->BLR). "
-                f"Marking {dest_airport} as reachable. Min fare: ₹{min_fare:.0f}"
+            err = response_data.get("Error", {})
+            logger.warning(
+                f"TBO DEL->{airport}: ResponseStatus={response_data.get('ResponseStatus')} "
+                f"ErrCode={err.get('ErrorCode', 0)} '{err.get('ErrorMessage', '')}'"
+                f"{' — trying fallback' if not is_fallback and airport != FALLBACK_AIRPORT else ''}"
             )
-            return min_fare
 
         return None
 
@@ -214,119 +226,193 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
         return None
 
 
+# ── Hotel code cache (city lookup is expensive — cache per tbo_id) ────────────
+_hotel_code_cache: dict = {}
+
+
+async def _lookup_city_code(client: httpx.AsyncClient, city_name: str) -> Optional[str]:
+    """Search TBO CityList for India and return the city code for the best match."""
+    try:
+        r = await client.post(
+            f"{TBO_HOTEL_API_URL}/CityList",
+            auth=(_hotel_user(), _hotel_pass()),
+            json={"CountryCode": "IN"},
+            timeout=20.0,
+        )
+        cities = r.json().get("CityList", [])
+        search = city_name.lower().split("/")[0].strip()  # handle "Leh-Ladakh" → "leh"
+        # Try exact word match first, then substring
+        for city in cities:
+            if search == city.get("Name", "").lower().split(",")[0].strip():
+                return city.get("Code")
+        for city in cities:
+            if search in city.get("Name", "").lower():
+                return city.get("Code")
+    except Exception as e:
+        logger.warning(f"CityList lookup failed for '{city_name}': {e}")
+    return None
+
+
+async def _lookup_hotel_codes(client: httpx.AsyncClient, city_code: str) -> str:
+    """Return comma-separated TBO hotel codes for a given city code (first 10)."""
+    try:
+        r = await client.post(
+            f"{TBO_HOTEL_API_URL}/TBOHotelCodeList",
+            auth=(_hotel_user(), _hotel_pass()),
+            json={"CityCode": city_code, "IsDetailedResponse": "false"},
+            timeout=20.0,
+        )
+        hlist = r.json().get("HotelCodeList", [])[:10]
+        codes = [
+            str(h.get("TBOHotelCode", h) if isinstance(h, dict) else h)
+            for h in hlist
+        ]
+        return ",".join(codes)
+    except Exception as e:
+        logger.warning(f"TBOHotelCodeList lookup failed for city {city_code}: {e}")
+    return ""
+
+
 async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
     """
     Search TBO's live endpoints to find actual hotel prices and availability.
+    Tries +30 days first; falls back to +60 days if no rooms available.
     """
     dest_info = DESTINATION_MAP.get(tbo_id)
     if not dest_info:
         logger.error(f"Unknown destination ID {tbo_id}")
         return None
 
-    checkin = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-    checkout = (datetime.now() + timedelta(days=35)).strftime("%Y-%m-%d")
-
-    # TBO Hotel API uses Basic Auth
     tbo_auth = (_hotel_user(), _hotel_pass())
-
-    search_payload = {
-        "CheckIn": checkin,
-        "CheckOut": checkout,
-        "HotelCodes": dest_info["hotel_codes"],
-        "GuestNationality": "IN",
-        "PaxRooms": [
-            {
-                "Adults": 1,
-                "Children": 0
-            }
-        ],
-        "IsDetailedResponse": False
-    }
+    hotel_results = None
+    hotel_price_date_label = None  # Set only when using the +60 day fallback
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        # Search API
-        try:
-            res = await client.post(f"{TBO_HOTEL_API_URL}/Search", auth=tbo_auth, json=search_payload, timeout=25.0)
-            res.raise_for_status()
-            data = res.json()
-            
-            # The API response structure: Status, HotelResult -> [ { HotelCode, TotalFare, ... } ]
-            if data.get("Status", {}).get("Code") != 200:
-                logger.warning(f"TBO Search failed: {data.get('Status')}")
-                hotel_results = None
-            else:    
-                hotel_results = data.get("HotelResult", [])
-            
-        except Exception as e:
-            logger.error(f"TBO Search exception: {e}")
-            hotel_results = None
+
+        # ── 0. Dynamically resolve real hotel codes via TBO CityList / HotelCodeList ──
+        if tbo_id not in _hotel_code_cache:
+            city_name = dest_info["name"]
+            city_code = await _lookup_city_code(client, city_name)
+            if city_code:
+                dynamic_codes = await _lookup_hotel_codes(client, city_code)
+                _hotel_code_cache[tbo_id] = dynamic_codes
+                if dynamic_codes:
+                    logger.info(f"Dynamic hotel codes for {city_name} (cityCode={city_code}): {dynamic_codes}")
+                else:
+                    logger.warning(f"TBOHotelCodeList returned empty for {city_name} (cityCode={city_code}) — using hardcoded fallback")
+            else:
+                _hotel_code_cache[tbo_id] = ""
+                logger.warning(f"City '{city_name}' not found in TBO CityList — using hardcoded fallback")
+
+        hotel_codes_to_use = _hotel_code_cache.get(tbo_id) or dest_info["hotel_codes"]
+
+        # ── 1. Hotel Search: try +30 days first, fall back to +60 days ────────
+        for day_offset in [30, 60]:
+            checkin  = (datetime.now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            checkout = (datetime.now() + timedelta(days=day_offset + 5)).strftime("%Y-%m-%d")
+            search_payload = {
+                "CheckIn": checkin,
+                "CheckOut": checkout,
+                "HotelCodes": hotel_codes_to_use,
+                "GuestNationality": "IN",
+                "PaxRooms": [{"Adults": 1, "Children": 0}],
+                "IsDetailedResponse": False,
+                "Filters": {"Refundable": False, "NoOfRooms": 0, "MealType": 0,
+                            "OrderBy": 0, "StarRating": 0, "HotelName": None},
+                "ResponseTime": 15.0,
+            }
+            try:
+                res = await client.post(
+                    f"{TBO_HOTEL_API_URL}/Search",
+                    auth=tbo_auth, json=search_payload, timeout=25.0
+                )
+                res.raise_for_status()
+                data = res.json()
+                status_code = data.get("Status", {}).get("Code")
+                if status_code == 200 and data.get("HotelResult"):
+                    hotel_results = data["HotelResult"]
+                    if day_offset > 30:
+                        hotel_price_date_label = f"{checkin} to {checkout}"
+                    logger.info(
+                        f"TBO Hotel OK for {dest_info['name']} "
+                        f"({checkin}-{checkout}): {len(hotel_results)} hotels"
+                    )
+                    break
+                else:
+                    logger.warning(
+                        f"TBO Hotel +{day_offset}d: Code={status_code} "
+                        f"'{data.get('Status',{}).get('Description','')}'"
+                        f" — retrying with later dates"
+                    )
+            except Exception as e:
+                logger.error(f"TBO Search exception (+{day_offset}d): {e}")
 
         if not hotel_results:
             logger.warning("Falling back to MOCK TBO data to ensure the demo functions.")
-            # Generate realistic mock hotels based on the budget
             base_price = int(budget * 0.45)
+            # Mock data uses a synthetic Rooms structure so price extraction below works uniformly
             hotel_results = [
-                {"HotelCode": hcode, "TotalFare": base_price + (i * 2500), "HotelName": f"Premium Stay {i+1} (Fallback)", "Rating": 5 if i%2==0 else 4}
+                {
+                    "HotelCode": hcode,
+                    "Currency": "INR",
+                    "Rooms": [{"TotalFare": base_price + (i * 2500), "Name": ["Deluxe Room"], "MealType": "Room_Only"}],
+                    "_mock": True
+                }
                 for i, hcode in enumerate(dest_info["hotel_codes"].split(","))
             ]
 
-        # Filter and process
+        # ── 2. Extract prices from Rooms[0].TotalFare (real API field) ────────
         valid_hotels = []
-        best_price = float('inf')
-        
-        for hotel in hotel_results:
-            # TotalFare can be str or float depending on API vs mock data — always cast to float
-            try:
-                total_fare = float(hotel.get("TotalFare", float('inf')))
-            except (TypeError, ValueError):
-                total_fare = float('inf')
-            # Let's consider total fare to be for 5 nights
-            price_per_night = total_fare / 5
+        best_price = float("inf")
 
-            # Check if total_fare fits inside the user's overall budget
+        for hotel in hotel_results:
+            rooms = hotel.get("Rooms", [])
+            if not rooms:
+                continue
+            try:
+                total_fare = float(rooms[0].get("TotalFare", float("inf")))
+            except (TypeError, ValueError):
+                total_fare = float("inf")
+            price_per_night = total_fare / 5  # 5-night stay
+
             if total_fare <= float(budget):
                 valid_hotels.append({
                     "HotelCode": hotel.get("HotelCode"),
                     "TotalFare": total_fare,
-                    "price_per_night": price_per_night
+                    "price_per_night": price_per_night,
+                    "_mock": hotel.get("_mock", False),
                 })
                 best_price = min(best_price, total_fare)
-                
+
             if len(valid_hotels) == 3:
                 break
-                
+
         if not valid_hotels:
             return None
 
-        # Get specifics for these valid hotels
+        # ── 3. Fetch hotel details (name, rating, images) ────────────────────
         hotel_codes = ",".join([str(h["HotelCode"]) for h in valid_hotels])
-        details_payload = {
-            "Hotelcodes": hotel_codes,
-            "Language": "EN"
-        }
-        
-        hotel_map = {}
+        hotel_map: dict = {}
         try:
-            res_details = await client.post(f"{TBO_HOTEL_API_URL}/HotelDetails", auth=tbo_auth, json=details_payload, timeout=25.0)
+            res_details = await client.post(
+                f"{TBO_HOTEL_API_URL}/HotelDetails",
+                auth=tbo_auth,
+                json={"Hotelcodes": hotel_codes, "Language": "EN"},
+                timeout=25.0
+            )
             res_details.raise_for_status()
             det_data = res_details.json()
-            
             hotel_details_list = det_data.get("HotelDetails", [])
             hotel_map = {str(d.get("HotelCode")): d for d in hotel_details_list}
-            
         except Exception as e:
             logger.warning(f"TBO HotelDetails exception: {e}. Falling back to mock details.")
-            # If real details failed, we will use mock details below
 
         final_hotels = []
         for vh in valid_hotels:
             code = str(vh["HotelCode"])
             details = hotel_map.get(code, {})
-            
-            # Extracts
-            h_name = details.get("HotelName", f"Hotel {code}")
-            
-            # Rating parsing, handle both strings (e.g. "ThreeStar") and numbers (e.g. 4)
+
+            # Rating
             r_val = details.get("HotelRating", "ThreeStar")
             rating = 3.0
             if isinstance(r_val, (int, float)):
@@ -336,8 +422,8 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 elif "Five" in r_val or "5" in r_val: rating = 5.0
                 elif "Two" in r_val or "2" in r_val: rating = 2.0
                 elif "One" in r_val or "1" in r_val: rating = 1.0
-                
-            # Images can be a list of URLs or a single string URL depending on API response
+
+            # Images
             raw_images = details.get("Images", [])
             if isinstance(raw_images, list):
                 image_list: List[str] = [str(img) for img in raw_images if img]
@@ -346,21 +432,28 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
             else:
                 image_list = []
 
-            # Use existing details if available, otherwise generate mock
-            _code_str = str(code)
-            hotel_name = details.get("HotelName") or f"{dest_info['name']} Grand Hotel {_code_str[max(0, len(_code_str) - 3):]} (Fallback)"
-            star_rating = rating  # Use parsed rating or default 3.0
-            description = str(details.get("Description") or f"Experience the charm of {dest_info['name']} at {hotel_name}. A perfect blend of comfort and luxury.")[:200]
-            image_url = (image_list[0] if image_list else None) or "https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-            
+            hotel_name = (
+                details.get("HotelName")
+                or f"{dest_info['name']} Hotel {code[-3:]} {'(Fallback)' if vh.get('_mock') else ''}"
+            )
+            description = str(
+                details.get("Description")
+                or f"Experience {dest_info['name']} at {hotel_name}."
+            )[:200]
+            image_url = (image_list[0] if image_list else None) or (
+                "https://images.unsplash.com/photo-1566073771259-6a8506099945"
+                "?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+            )
+
             final_hotels.append({
                 "name": hotel_name,
                 "price_per_night": vh["price_per_night"],
-                "rating": star_rating,
+                "rating": rating,
                 "photo": image_url,
-                "description": description
+                "description": description,
             })
 
+        # ── 4. Flight connectivity check ──────────────────────────────────────
         flight_min_fare = await _check_flight_connectivity(client, dest_info["airport"])
 
     return {
@@ -369,6 +462,8 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
         "hotels": final_hotels,
         "flight_available_from_delhi": flight_min_fare is not None,
         "flight_min_fare": int(flight_min_fare) if flight_min_fare else None,
+        "hotel_price_date_label": hotel_price_date_label,  # None = +30d, str = fallback date
         "tagline": f"Discover the magic of {dest_info['name']}",
-        "best_season": "Year-round"
+        "best_season": "Year-round",
     }
+
