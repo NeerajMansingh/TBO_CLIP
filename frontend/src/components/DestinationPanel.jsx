@@ -54,7 +54,7 @@ export default function DestinationPanel({ uploadedPhoto, currentMatch, isUpdati
                             : "https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
                         const defaultFlight = Math.floor(stop.price_per_person * 0.35);
                         const flightCost = stop.flight_min_fare || defaultFlight;
-                        const hotelCost = stop.price_per_person ? stop.price_per_person - flightCost : 0;
+                        const hotelCost = stop.price_per_person ? Math.max(0, stop.price_per_person - flightCost) : 0;
                         const totalCost = flightCost + hotelCost;
 
                         return (

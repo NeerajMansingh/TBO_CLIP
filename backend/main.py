@@ -247,19 +247,35 @@ async def build_itineraries(
         stops_for_type = resolved_stops[:n_stops]
         per_stop_budgets = [int(budget * f) for f in fractions]
 
-        # Recalculate realistic total: sum of cheapest hotel at each stop
+        # Recalculate realistic total: sum of cheapest hotel + flight at each stop
         total_price = 0
         stop_data_for_type = []
+        is_feasible = True
+        
         for idx, stop in enumerate(stops_for_type):
-            # Scale price to per-stop budget allocated
             allocated = per_stop_budgets[idx]
-            price = min(stop["price_per_person"], allocated)
-            total_price += price
-            stop_data_for_type.append({**stop, "price_per_person": price, "allocated_budget": allocated})
+            
+            flight_cost = stop.get("flight_min_fare") or int(stop["price_per_person"] * 0.35)
+            hotel_cost = stop["price_per_person"] # This is the cheapest hotel price from TBO
+            combined_cost = flight_cost + hotel_cost
+            
+            # If the true combined cost exceeds the allocated budget step, the itinerary is not feasible
+            if combined_cost > allocated:
+                is_feasible = False
+                break
+                
+            total_price += combined_cost
+            
+            # The frontend expects price_per_person to be the COMBINED total for this stop
+            stop_data_for_type.append({
+                **stop, 
+                "price_per_person": combined_cost, 
+                "allocated_budget": allocated
+            })
 
-        # Hide if total price exceeds budget
-        if total_price > budget:
-            logger.info(f"Hiding {journey_type} itinerary: total ₹{total_price:,} > budget ₹{budget:,}")
+        # Hide if total price exceeds budget or an individual stop burst its allocation
+        if not is_feasible or total_price > budget:
+            logger.info(f"Hiding {journey_type} itinerary: flight+hotel cost exceeds budget constraint.")
             continue
 
         itineraries.append({
