@@ -18,6 +18,8 @@ backend/chroma_store/
 # Generated files (regeneratable with scripts)
 backend/destination_embeddings.json
 backend/destination_embeddings2.json
+backend/create_colab_notebook.py
+backend/generate_200_embeddings_colab.ipynb
 
 # Destination photos (regeneratable with download script)
 backend/destinations/
