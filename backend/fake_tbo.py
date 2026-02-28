@@ -195,22 +195,38 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
                     "PreferredArrivalTime": dep_date
                 }]
             }
-            res_search = await client.post(TBO_FLIGHT_SEARCH_URL, json=search_data, timeout=120.0)
+            res_search = await client.post(TBO_FLIGHT_SEARCH_URL, json=search_data, timeout=8.0)
             response_data = res_search.json().get("Response", {})
 
             if response_data.get("ResponseStatus") == 1 and response_data.get("Results"):
                 flights = response_data["Results"][0]
-                fares = [
-                    float(f.get("Fare", {}).get("PublishedFare", 0))
-                    for f in flights
-                    if f.get("Fare", {}).get("PublishedFare")
-                ]
-                min_fare = min(fares) if fares else None
-                if min_fare:
+                flight_options = []
+                for f in flights:
+                    fare = f.get("Fare", {}).get("PublishedFare")
+                    if fare:
+                        # Try to extract airline name (TBO Segments format)
+                        airline = "Airline"
+                        try:
+                            segs = f.get("Segments", [[{}]])[0]
+                            airline = segs[0].get("Airline", {}).get("AirlineName", "Unknown Airline")
+                        except Exception:
+                            pass
+                        flight_options.append({
+                            "id": f.get("ResultIndex", "0"),
+                            "fare": float(fare),
+                            "airline": airline
+                        })
+
+                if flight_options:
+                    # Sort by fare and take top 5
+                    flight_options.sort(key=lambda x: x["fare"])
+                    top_flights = flight_options[:5]
+                    min_fare = top_flights[0]["fare"]
+                    
                     route = f"DEL->{airport}"
                     label = f"{route} (proxy)" if is_fallback else route
                     logger.info(f"TBO flight OK: {label} | {len(flights)} flights | min fare: Rs{min_fare:.0f}")
-                    return min_fare
+                    return {"min_fare": min_fare, "options": top_flights}
 
             err = response_data.get("Error", {})
             logger.warning(
@@ -237,7 +253,7 @@ async def _lookup_city_code(client: httpx.AsyncClient, city_name: str) -> Option
             f"{TBO_HOTEL_API_URL}/CityList",
             auth=(_hotel_user(), _hotel_pass()),
             json={"CountryCode": "IN"},
-            timeout=20.0,
+            timeout=6.0,
         )
         cities = r.json().get("CityList", [])
         search = city_name.lower().split("/")[0].strip()  # handle "Leh-Ladakh" → "leh"
@@ -260,7 +276,7 @@ async def _lookup_hotel_codes(client: httpx.AsyncClient, city_code: str) -> str:
             f"{TBO_HOTEL_API_URL}/TBOHotelCodeList",
             auth=(_hotel_user(), _hotel_pass()),
             json={"CityCode": city_code, "IsDetailedResponse": "false"},
-            timeout=20.0,
+            timeout=6.0,
         )
         hlist = r.json().get("HotelCodeList", [])[:10]
         codes = [
@@ -282,6 +298,10 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
     if not dest_info:
         logger.error(f"Unknown destination ID {tbo_id}")
         return None
+
+    # Immediate fail-fast for local fallback destinations not present in TBO
+    if str(tbo_id).startswith("LOCAL_"):
+        return {"hotels": [], "flights": [], "flight_available_from_delhi": False, "flight_min_fare": None}
 
     tbo_auth = (_hotel_user(), _hotel_pass())
     hotel_results = None
@@ -309,7 +329,7 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
         # ── 1. Hotel Search: try +30 days first, fall back to +60 days ────────
         for day_offset in [30, 60]:
             checkin  = (datetime.now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
-            checkout = (datetime.now() + timedelta(days=day_offset + 5)).strftime("%Y-%m-%d")
+            checkout = (datetime.now() + timedelta(days=day_offset + 2)).strftime("%Y-%m-%d")
             search_payload = {
                 "CheckIn": checkin,
                 "CheckOut": checkout,
@@ -324,7 +344,7 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
             try:
                 res = await client.post(
                     f"{TBO_HOTEL_API_URL}/Search",
-                    auth=tbo_auth, json=search_payload, timeout=25.0
+                    auth=tbo_auth, json=search_payload, timeout=8.0
                 )
                 res.raise_for_status()
                 data = res.json()
@@ -348,18 +368,11 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 logger.error(f"TBO Search exception (+{day_offset}d): {e}")
 
         if not hotel_results:
-            logger.warning("Falling back to MOCK TBO data to ensure the demo functions.")
-            base_price = int(budget * 0.45)
-            # Mock data uses a synthetic Rooms structure so price extraction below works uniformly
-            hotel_results = [
-                {
-                    "HotelCode": hcode,
-                    "Currency": "INR",
-                    "Rooms": [{"TotalFare": base_price + (i * 2500), "Name": ["Deluxe Room"], "MealType": "Room_Only"}],
-                    "_mock": True
-                }
-                for i, hcode in enumerate(dest_info["hotel_codes"].split(","))
-            ]
+            logger.warning(
+                f"TBO returned no hotel results for {dest_info['name']} on all date offsets. "
+                "No hotels available — returning None."
+            )
+            hotel_results = []
 
         # ── 2. Extract prices from Rooms[0].TotalFare (real API field) ────────
         valid_hotels = []
@@ -373,21 +386,25 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 total_fare = float(rooms[0].get("TotalFare", float("inf")))
             except (TypeError, ValueError):
                 total_fare = float("inf")
-            price_per_night = total_fare / 5  # 5-night stay
+            if total_fare == float("inf"):
+                continue
+            # Price per night based on the 2-night stay window used in the local search
+            price_per_night = round(total_fare / 2, 2)
 
             if total_fare <= float(budget):
                 valid_hotels.append({
                     "HotelCode": hotel.get("HotelCode"),
                     "TotalFare": total_fare,
                     "price_per_night": price_per_night,
-                    "_mock": hotel.get("_mock", False),
                 })
                 best_price = min(best_price, total_fare)
 
-            if len(valid_hotels) == 3:
+            if len(valid_hotels) == 5:
                 break
 
         if not valid_hotels:
+            # No real hotels within budget — signal unavailability clearly
+            logger.info(f"No hotels within budget ₹{budget} for {dest_info['name']}")
             return None
 
         # ── 3. Fetch hotel details (name, rating, images) ────────────────────
@@ -398,7 +415,7 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 f"{TBO_HOTEL_API_URL}/HotelDetails",
                 auth=tbo_auth,
                 json={"Hotelcodes": hotel_codes, "Language": "EN"},
-                timeout=25.0
+                timeout=8.0
             )
             res_details.raise_for_status()
             det_data = res_details.json()
@@ -434,7 +451,7 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
 
             hotel_name = (
                 details.get("HotelName")
-                or f"{dest_info['name']} Hotel {code[-3:]} {'(Fallback)' if vh.get('_mock') else ''}"
+                or f"{dest_info['name']} Hotel {code[-3:]}"
             )
             description = str(
                 details.get("Description")
@@ -454,12 +471,15 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
             })
 
         # ── 4. Flight connectivity check ──────────────────────────────────────
-        flight_min_fare = await _check_flight_connectivity(client, dest_info["airport"])
+        flight_result = await _check_flight_connectivity(client, dest_info["airport"])
+        flight_options = flight_result["options"] if flight_result else []
+        flight_min_fare = flight_result["min_fare"] if flight_result else None
 
     return {
         "destination": dest_info["name"],
         "price_per_person": best_price,
         "hotels": final_hotels,
+        "flights": flight_options,
         "flight_available_from_delhi": flight_min_fare is not None,
         "flight_min_fare": int(flight_min_fare) if flight_min_fare else None,
         "hotel_price_date_label": hotel_price_date_label,  # None = +30d, str = fallback date

@@ -4,6 +4,7 @@ import LoadingOverlay from './components/LoadingOverlay'
 import ResultsGrid from './components/ResultsGrid'
 import BookingModal from './components/BookingModal'
 import PlanView from './screens/PlanView'
+import DestinationSelectionScreen from './screens/DestinationSelectionScreen'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -25,7 +26,7 @@ const DESTINATION_POOL = [
 
 export default function App() {
   // ── App state machine ────────────────────────────────────────────────────
-  // 'home' | 'loading' | 'results' | 'plan' | 'confirm'
+  // 'home' | 'loading' | 'results' | 'destination-select' | 'plan' | 'confirm'
   const [appState, setAppState] = useState('home')
 
   // Search form parameters
@@ -46,6 +47,7 @@ export default function App() {
 
   // Plan / booking state
   const [selectedItinerary, setSelectedItinerary] = useState(null)
+  const [selectedPrimaryItinerary, setSelectedPrimaryItinerary] = useState(null)
   const [bookingTarget, setBookingTarget] = useState(null)
 
   // Persistent
@@ -84,54 +86,52 @@ export default function App() {
         formData.append('budget', String(budget))
         formData.append('travel_dates', travelMonth)
 
-        let res
-        try {
-          res = await fetch(`${API_BASE}/itineraries`, { method: 'POST', body: formData })
-        } catch {
-          res = null
+        const res = await fetch(`${API_BASE}/itineraries`, { method: 'POST', body: formData })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.detail?.message || err.detail || 'Image search failed. Please try again.')
         }
-
-        if (res?.ok) {
-          data = await res.json()
-        } else {
-          // Mock fallback for image path
-          await new Promise(r => setTimeout(r, 1800))
-          data = _mockData()
-        }
+        data = await res.json()
       } else {
         // Text-based search → /search
         const query = chatInput || 'Weekend trip in India'
-        let res
-        try {
-          res = await fetch(`${API_BASE}/search`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              query,
-              budget,
-              duration_days: durationDays,
-              travel_month: travelMonth,
-              vibes: selectedVibes,
-              origin_city: originCity,
-            }),
-          })
-        } catch {
-          res = null
+        const res = await fetch(`${API_BASE}/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            budget,
+            duration_days: durationDays,
+            travel_month: travelMonth,
+            vibes: selectedVibes,
+            origin_city: originCity,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          const detail = err.detail
+          throw new Error(
+            (typeof detail === 'object' ? detail.message : detail)
+            || 'Search failed. Please try a different query.'
+          )
         }
-
-        if (res?.ok) {
-          data = await res.json()
-        } else {
-          await new Promise(r => setTimeout(r, 1800))
-          data = _mockData()
-        }
+        data = await res.json()
       }
 
-      setResults(data.itineraries || [])
+      const receivedItineraries = data.itineraries || []
+      setResults(receivedItineraries)
       setSessionId(data.session_id)
       setVibeTagsFromSearch(data.vibe_tags || [])
       setRouteJustification(data.route_justification || '')
-      setAppState('results')
+
+      // Go directly to destination selection screen showing all ranked results
+      if (receivedItineraries.length > 0) {
+        setSelectedPrimaryItinerary(receivedItineraries[0])
+        setAppState('destination-select')
+      } else {
+        setError('No destinations found for your search. Please try a different query.')
+        setAppState('home')
+      }
 
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
@@ -178,11 +178,55 @@ export default function App() {
 
   // ── Navigation helpers ────────────────────────────────────────────────────
   const handleSelectItinerary = (itinerary) => {
-    setSelectedItinerary(itinerary)
+    setSelectedPrimaryItinerary(itinerary)
+    setAppState('destination-select')
+  }
+
+  const handleDestinationBack = () => {
+    setAppState('home')
+    setResults([])
+    setImagePreview(null)
+    setChatInput('')
+  }
+
+  // Called when user clicks "Build My Itinerary" on DestinationSelectionScreen.
+  // Merges the primary itinerary with any selected nearby places as bonus stops.
+  const handleBuildItinerary = (primaryItinerary, selectedNearbyPlaces) => {
+    // Build a merged itinerary: primary stop(s) + nearby places as lightweight stops
+    const nearbyStops = selectedNearbyPlaces.map(place => ({
+      destination: place.name,
+      tbo_id: null, // nearby places don't have TBO IDs
+      photo: null,
+      price_per_person: 0,
+      hotels: [],
+      tagline: place.description?.slice(0, 120) || '',
+      is_nearby: true,
+      distance_km: place.distance_km,
+      category: place.category,
+      visit_duration: place.visit_duration,
+    }))
+
+    // Keep ONLY the first stop (primary destination) from the generated itinerary
+    const primaryStop = primaryItinerary.stops ? [primaryItinerary.stops[0]] : [];
+
+    const merged = {
+      ...primaryItinerary,
+      stops: [...primaryStop, ...nearbyStops],
+      stop_count: primaryStop.length + nearbyStops.length,
+      total_price: (primaryStop[0]?.price_per_person || 0) + (primaryItinerary.total_price || 0),
+      label: nearbyStops.length > 0
+        ? `${primaryItinerary.label} + ${nearbyStops.length} Nearby`
+        : primaryItinerary.label,
+      conversation_opener: primaryItinerary.conversation_opener ||
+        `Your customised ${primaryItinerary.region} itinerary is ready! You've added ${nearbyStops.length} nearby places. Ask me anything!`,
+      route_justification: `Your customized route (${[...primaryStop, ...nearbyStops].map(s => s.destination).join(' → ')}) has been assembled. This circuit minimizes travel time and maximizes exploration.`,
+    }
+
+    setSelectedItinerary(merged)
     setAppState('plan')
   }
 
-  const handlePlanBack = () => setAppState('results')
+  const handlePlanBack = () => setAppState('destination-select')
 
   const handleConfirmBooking = () => {
     setBookingTarget(selectedItinerary)
@@ -206,6 +250,8 @@ export default function App() {
     setImagePreview(null)
     setChatInput('')
     setSelectedVibes([])
+    setSelectedPrimaryItinerary(null)
+    setSelectedItinerary(null)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -268,20 +314,20 @@ export default function App() {
 
         {appState === 'loading' && <LoadingOverlay />}
 
-        {appState === 'results' && (
-          <ResultsGrid
-            results={results}
-            onBook={handleSelectItinerary}
-            onReroll={handleReroll}
-            onRefine={handleRefine}
-            onReset={handleReset}
-            rejectedIds={rejectedIds}
+
+
+        {appState === 'destination-select' && selectedPrimaryItinerary && (
+          <DestinationSelectionScreen
+            primaryItinerary={{
+              ...selectedPrimaryItinerary,
+              route_justification: routeJustification,
+            }}
+            allItineraries={results}
             originCity={originCity}
             travelMonth={travelMonth}
-            activeVibes={activeVibes}
-            setActiveVibes={setActiveVibes}
-            vibeTagsFromSearch={vibeTagsFromSearch}
             routeJustification={routeJustification}
+            onBack={handleDestinationBack}
+            onBuildItinerary={handleBuildItinerary}
           />
         )}
 
@@ -289,8 +335,7 @@ export default function App() {
           <PlanView
             itinerary={{
               ...selectedItinerary,
-              conversation_opener: results.find(r => r === selectedItinerary)?.conversation_opener || undefined,
-              route_justification: routeJustification,
+              route_justification: selectedItinerary.route_justification || routeJustification,
             }}
             sessionId={sessionId}
             apiBase={API_BASE}
@@ -314,32 +359,4 @@ export default function App() {
 
     </div>
   )
-}
-
-// ── Mock data fallback ────────────────────────────────────────────────────────
-function _mockData() {
-  return {
-    session_id: 'mock-' + Math.random().toString(36).slice(2, 8),
-    itineraries: [
-      {
-        type: '1-stop', label: 'Quick Escape',
-        stops: [{ destination: 'Jaisalmer', tbo_id: 'JAISALMER_FAKE_020', photo: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=1200', price_per_person: 32000, hotels: [], tagline: 'The Golden City of the Thar Desert', flight_min_fare: 14000 }],
-        total_price: 32000, region: 'Rajasthan', stop_count: 1,
-      },
-      {
-        type: '2-stop', label: 'Weekend Explorer',
-        stops: [
-          { destination: 'Jaipur', tbo_id: 'JAIPUR_FAKE_012', photo: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?q=80&w=1200', price_per_person: 28000, hotels: [], tagline: 'The Pink City of Kings', flight_min_fare: 11000 },
-          { destination: 'Jodhpur', tbo_id: 'JODHPUR_FAKE_016', photo: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?q=80&w=1200', price_per_person: 22000, hotels: [], tagline: 'The Blue City at the edge of the desert', flight_min_fare: 10000 },
-        ],
-        total_price: 50000, region: 'Rajasthan', stop_count: 2,
-      },
-    ],
-    vibe_tags: ['heritage', 'desert', 'cultural'],
-    match_reasons: ['rich heritage', 'desert landscapes', 'Rajasthani culture'],
-    itinerary_narrative: 'An immersive journey through the royal cities of Rajasthan.',
-    conversation_opener: "We've found a stunning Rajasthan journey for you! Which stop are you most excited about?",
-    route_justification: 'This Rajasthan circuit is geographically efficient — Jaipur and Jodhpur are 335 km apart by road, making this a smooth two-city journey without backtracking.',
-    region: 'Rajasthan',
-  }
 }

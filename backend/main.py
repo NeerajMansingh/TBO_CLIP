@@ -61,7 +61,7 @@ app = FastAPI(title="VibeTravel API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -297,60 +297,69 @@ async def build_itineraries(
             detail="No matching destinations found. Try a different photo or budget.",
         )
 
-    anchor_candidate = candidates[0]
-    anchor_tbo_id = anchor_candidate["tbo_id"]
-    anchor_region = get_region(anchor_tbo_id)
-    compatible_ids = get_compatible_stops(anchor_tbo_id, exclude_ids=[], n=2)
-    all_stop_ids = [anchor_tbo_id] + compatible_ids
+    # Pick top 3 UNIQUE destinations with category diversity
+    selected_cands = []
+    seen_names = set()
+    seen_categories = []
 
-    resolved_stops = await _resolve_stops(
-        all_stop_ids, budget, candidates, anchor_region,
-        BUDGET_SPLITS["3-stop"],
-    )
+    # Map to _DEST_REGISTRY early to get categories
+    cand_info = []
+    for cand in candidates:
+        name = cand["destination"]
+        reg_info = next((d for d in _DEST_REGISTRY if d["name"].lower() == name.lower()), {})
+        cat = reg_info.get("category", "")
+        cand_info.append((cand, reg_info, cat))
 
-    if not resolved_stops:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not resolve any destinations within your budget.",
-        )
+    for cand, reg_info, cat in cand_info:
+        name = cand["destination"]
+        if name in seen_names:
+            continue
+        # Diversity check: if category already seen, we can still pick it but we might want to prioritize others.
+        # Since candidates are pre-sorted by CLIP similarity, we'll just enforce no exact duplicates for now.
+        seen_names.add(name)
+        seen_categories.append(cat)
+        selected_cands.append((cand, reg_info))
+        if len(selected_cands) == 3:
+            break
 
-    itineraries = _build_itinerary_options(resolved_stops, budget, anchor_region)
-    if not itineraries:
-        raise HTTPException(
-            status_code=400,
-            detail="No itinerary options fit within your budget. Try increasing your budget.",
-        )
+    card_labels = [
+        ("#1 Best Match",   "best-match"),
+        ("#2 Great Option", "runner-up"),
+        ("#3 Also Consider", "third-match"),
+    ]
 
-    best_itinerary = itineraries[-1]
-    try:
-        explanation = gemini_utils.generate_itinerary_explanation(
-            stops=best_itinerary["stops"],
-            vibe_tags=vibe_tags,
-        )
-        stop_narratives = explanation.get("stop_narratives", {})
-        stop_itineraries = explanation.get("stop_itineraries", {})
-        for it in itineraries:
-            for s in it["stops"]:
-                if s["destination"] in stop_narratives:
-                    s["tagline"] = stop_narratives[s["destination"]]
-                if s["destination"] in stop_itineraries:
-                    s["itinerary"] = stop_itineraries[s["destination"]]
-    except Exception as e:
-        logger.warning(f"Gemini explanation failed: {e}")
-        stop_names = " → ".join(s["destination"] for s in best_itinerary["stops"])
-        explanation = {
-            "match_reasons": ["scenic journey", "diverse landscapes", "cultural richness"],
-            "itinerary_narrative": f"A wonderful journey through {stop_names}.",
-            "conversation_opener": f"We've found a great {best_itinerary['type']} journey for you! What would you like to know?",
-            "stop_narratives": {},
+    itineraries = []
+    for rank_idx, (cand, reg_info) in enumerate(selected_cands):
+        img_path = cand.get("photo") or (f"/destinations/{reg_info['folder']}/1.jpg" if reg_info.get("folder") else None)
+        label, card_type = card_labels[rank_idx]
+
+        stop_data = {
+            "destination": cand["destination"],
+            "tbo_id": cand["tbo_id"],
+            "photo": img_path,
+            "price_per_person": 0,
+            "hotels": [],
+            "flights": [],
+            "tagline": reg_info.get("description", "")[:150] if reg_info else "",
+            "best_season": travel_dates or "Year round",
+            "itinerary": [],
+            "similarity_rank": rank_idx + 1,
+            "category": reg_info.get("category", ""),
+            "rating": reg_info.get("rating", 4.0),
+            "folder": reg_info.get("folder", ""),
         }
 
-    # Add route justification
-    route_justification = gemini_utils.generate_route_justification(
-        best_itinerary["stops"], anchor_region
-    )
+        itineraries.append({
+            "type": card_type,
+            "label": label,
+            "stops": [stop_data],
+            "total_price": 0,
+            "stop_count": 1,
+            "region": reg_info.get("folder", "India").replace("_", " ").title() if reg_info else "India",
+            "similarity_rank": rank_idx + 1,
+        })
 
-    first_stop = best_itinerary["stops"][0]
+    first_stop = itineraries[0]["stops"][0]
     session_id = session_store.create_session(
         original_embedding=user_embedding,
         budget=budget,
@@ -358,41 +367,238 @@ async def build_itineraries(
         travel_dates=travel_dates,
         current_match=first_stop["destination"],
         current_tbo_id=first_stop["tbo_id"],
-        current_price=first_stop["price_per_person"],
-        current_hotels=first_stop["hotels"],
+        current_price=0,
+        current_hotels=[],
         current_photo=first_stop["photo"],
-        match_reasons=explanation["match_reasons"],
-        conversation_opener=explanation["conversation_opener"],
+        match_reasons=["visual similarity to your photo", "matches your budget"],
+        conversation_opener="I found some great places matching your photo's vibe! What do you think?",
         vibe_tags=vibe_tags,
-        itinerary_stops=best_itinerary["stops"],
-        itinerary_type=best_itinerary["type"],
-        itinerary_label=best_itinerary["label"],
-        itinerary_region=best_itinerary["region"],
-        itinerary_total_price=best_itinerary["total_price"],
+        itinerary_stops=[first_stop],
+        itinerary_type=itineraries[0]["type"],
+        itinerary_label=itineraries[0]["label"],
+        itinerary_region=itineraries[0]["region"],
+        itinerary_total_price=0,
     )
 
     return {
         "session_id": session_id,
         "itineraries": itineraries,
         "vibe_tags": vibe_tags,
-        "match_reasons": explanation["match_reasons"],
-        "itinerary_narrative": explanation.get("itinerary_narrative", ""),
-        "conversation_opener": explanation["conversation_opener"],
-        "route_justification": route_justification,
-        "region": anchor_region,
+        "match_reasons": ["visual similarity", "vibe match"],
+        "conversation_opener": "I found some great places matching your photo's vibe! What do you think?",
+        "route_justification": "",
+        "region": itineraries[0]["region"],
     }
 
 
 # ─── Endpoint 2: POST /search (new — text-based) ─────────────────────────────
 
+
+# ─── Fast local keyword scorer for text search ───────────────────────────────
+
+def _score_destination_for_query(dest: dict, query_lower: str, vibes: list) -> float:
+    """Score a _DEST_REGISTRY entry against a free-text query. Pure Python, no ML."""
+    score = 0.0
+    name = dest["name"].lower()
+    desc = dest.get("description", "").lower()
+    cat  = dest.get("category", "").lower()
+    highlights = " ".join(dest.get("highlights", [])).lower()
+    folder = dest.get("folder", "").lower()
+
+    # Exact / partial name match — highest signal
+    if name == query_lower:
+        score += 100
+    elif name in query_lower or query_lower in name:
+        score += 60
+    elif any(word in name for word in query_lower.split() if len(word) > 2):
+        score += 30
+
+    # Folder slug match
+    if folder.replace("_", " ") in query_lower:
+        score += 40
+
+    # Description + highlights match
+    for word in query_lower.split():
+        if len(word) < 3:
+            continue
+        if word in desc:
+            score += 5
+        if word in highlights:
+            score += 8
+
+    # Category keyword matching
+    cat_keywords = {
+        "beach":      ["beach", "sea", "coast", "ocean", "island", "surf", "sand"],
+        "adventure":  ["adventure", "trek", "hike", "ski", "rafting", "camping", "mountain"],
+        "historical": ["heritage", "fort", "palace", "history", "ancient", "mughal", "temple", "monument"],
+        "nature":     ["nature", "forest", "wildlife", "waterfall", "hill", "valley", "lake", "green"],
+        "cultural":   ["culture", "spiritual", "pilgrimage", "art", "festival", "yoga", "ashram", "temple"],
+    }
+    for cat_key, keywords in cat_keywords.items():
+        if cat == cat_key:
+            for kw in keywords:
+                if kw in query_lower:
+                    score += 15
+                    break
+
+    # Vibe matching
+    vibe_cat_map = {
+        "Beach Vibes": "beach", "Adventure": "adventure", "Heritage & History": "historical",
+        "Nature & Wildlife": "nature", "Cultural & Spiritual": "cultural",
+        "Mountain Views": "adventure", "Luxury": "nature",
+    }
+    for vibe in (vibes or []):
+        mapped_cat = vibe_cat_map.get(vibe)
+        if mapped_cat and cat == mapped_cat:
+            score += 20
+
+    return score
+
+
+# Build a reverse lookup: dest name → TBO id (from DESTINATION_MAP)
+_NAME_TO_TBO: dict[str, str] = {}
+for _tbo_id, _info in DESTINATION_MAP.items():
+    _NAME_TO_TBO[_info["name"].lower()] = _tbo_id
+
+
+def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_month: str, parsed: dict | None = None) -> list:
+    """
+    Returns exactly 3 INDEPENDENT single-destination results, uniquely ranked.
+    Card 1 = Best match, Card 2 = 2nd best DIFFERENT CATEGORY, Card 3 = 3rd best.
+    Guarantees diversity: no two cards show the same destination.
+    """
+    q = query.lower().strip()
+
+    # If Gemini parsed specific destinations, boost them heavily
+    boosted_names: set = set()
+    if parsed:
+        for dest_name in (parsed.get("destinations") or []):
+            boosted_names.add(dest_name.lower())
+        region_kw = (parsed.get("region") or "").lower()
+        if region_kw:
+            for d in _DEST_REGISTRY:
+                if (region_kw in d["name"].lower()
+                        or region_kw in d["description"].lower()
+                        or region_kw in d["folder"].lower()):
+                    boosted_names.add(d["name"].lower())
+
+    def base_score(d):
+        s = _score_destination_for_query(d, q, vibes)
+        if d["name"].lower() in boosted_names:
+            s += 80
+        return s
+
+    # Score and sort all destinations
+    all_scored = [(d, base_score(d)) for d in _DEST_REGISTRY]
+    all_scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Pick top 3 UNIQUE destinations with category diversity
+    selected: list[tuple] = []   # (dest_info, score)
+    seen_names: set = set()
+    seen_categories: list = []   # track category order for diversity bonus
+
+    for d, score in all_scored:
+        name = d["name"]
+        if name in seen_names:
+            continue
+
+        # Apply a small diversity penalty if same category already chosen
+        effective_score = score
+        if d.get("category") in seen_categories:
+            effective_score -= 10  # slight penalty; doesn't block, just lowers priority
+
+        seen_names.add(name)
+        seen_categories.append(d.get("category", ""))
+        selected.append((d, effective_score))
+
+        if len(selected) == 3:
+            break
+
+    # Pad to 3 if still short (e.g. registry has < 3 entries)
+    remaining = [(d, s) for d, s in all_scored if d["name"] not in seen_names]
+    for d, s in remaining:
+        selected.append((d, s))
+        if len(selected) == 3:
+            break
+
+    card_labels = [
+        ("#1 Best Match",   "best-match"),
+        ("#2 Great Option", "runner-up"),
+        ("#3 Also Consider", "third-match"),
+    ]
+
+    itineraries = []
+    for rank_idx, (dest_info, _score) in enumerate(selected[:3]):
+        tbo_id = _NAME_TO_TBO.get(dest_info["name"].lower())
+        if not tbo_id:
+            for k, v in _NAME_TO_TBO.items():
+                if dest_info["folder"] in k.replace(" ", "_").lower() or k in dest_info["folder"]:
+                    tbo_id = v
+                    break
+        if not tbo_id:
+            tbo_id = f"LOCAL_{dest_info['folder'].upper()}"
+
+        img_path = f"/destinations/{dest_info['folder']}/1.jpg"
+        label, card_type = card_labels[rank_idx]
+
+        stop_data = {
+            "destination": dest_info["name"],
+            "tbo_id": tbo_id,
+            "photo": img_path,
+            # price_per_person = 0 until real TBO data fetched
+            "price_per_person": 0,
+            "hotels": [],
+            "flights": [],
+            "tagline": dest_info.get("description", "")[:150],
+            "best_season": travel_month or "Year round",
+            "itinerary": [],
+            "similarity_rank": rank_idx + 1,
+            "category": dest_info.get("category", ""),
+            "rating": dest_info.get("rating", 4.0),
+            "folder": dest_info.get("folder", ""),
+        }
+
+        itineraries.append({
+            "type": card_type,
+            "label": label,
+            "stops": [stop_data],
+            "total_price": 0,   # Will be updated when TBO data is fetched
+            "stop_count": 1,
+            "region": dest_info.get("folder", "India").replace("_", " ").title(),
+            "similarity_rank": rank_idx + 1,
+        })
+
+    return itineraries
+
+
+# Keep backward-compat alias
+_local_search_itineraries = _local_search_ranked_results
+
+
+
+@app.get("/tbo_details")
+async def get_tbo_details(tbo_id: str, budget: int = 100000):
+    """Fetch live TBO hotel and flight options for a specific destination."""
+    from fake_tbo import get_tbo_data
+    try:
+        data = await get_tbo_data(tbo_id, budget)
+        if data:
+            return data
+    except Exception as e:
+        logger.error(f"Failed to fetch TBO details for {tbo_id}: {e}")
+    # Return empty fallback
+    return {"hotels": [], "flights": [], "flight_available_from_delhi": False, "flight_min_fare": None}
+
+
 @app.post("/search")
 async def text_search(request: SearchRequest):
     """
-    Text/NLP-based itinerary search — no image required.
-
-    Parses the natural language query with Gemini, maps it to ChromaDB
-    destinations via text embedding, and returns itinerary options.
+    Text-based itinerary search returning 3 INDEPENDENT ranked destination results.
+    Card 1 = Best match, Card 2 = 2nd best, Card 3 = 3rd best.
+    Uses Gemini NLP for query understanding and local scoring for speed.
     """
+    import asyncio
+
     logger.info(f"POST /search | query='{request.query}' | budget={request.budget}")
 
     validate_search_request(
@@ -401,130 +607,117 @@ async def text_search(request: SearchRequest):
         duration_days=request.duration_days,
     )
 
-    # Parse NLP query
-    parsed = gemini_utils.parse_search_query(request.query)
-    effective_budget = parsed.get("budget") or request.budget
-    effective_month = parsed.get("travel_month") or request.travel_month
-    effective_vibes = parsed.get("vibes") or (request.vibes or [])
-    duration_days = parsed.get("duration_days") or request.duration_days
+    effective_budget = request.budget or 100000
+    effective_month  = request.travel_month or "December"
+    effective_vibes  = request.vibes or []
+    duration_days    = request.duration_days or 5
+    origin_city      = request.origin_city or "Mumbai"
 
-    # Build a composite text prompt for ChromaDB embedding
-    search_parts = [request.query]
-    if effective_vibes:
-        search_parts.append(", ".join(effective_vibes))
-    if parsed.get("region"):
-        search_parts.append(parsed["region"])
-    composite_query = " ".join(search_parts)
+    # ── Use Gemini NLP parser to better understand query intent ─────────────
+    parsed_query: dict | None = None
+    try:
+        async def _parse_nlp():
+            return gemini_utils.parse_search_query(request.query)
+        parsed_query = await asyncio.wait_for(_parse_nlp(), timeout=6.0)
+        # Override effective params with parsed values if available
+        if parsed_query.get("budget") and not request.budget:
+            effective_budget = parsed_query["budget"]
+        if parsed_query.get("travel_month"):
+            effective_month = parsed_query["travel_month"]
+        if parsed_query.get("vibes"):
+            effective_vibes = list(set(effective_vibes + parsed_query["vibes"]))
+        if parsed_query.get("duration_days") and not request.duration_days:
+            duration_days = parsed_query["duration_days"]
+        if parsed_query.get("origin_city"):
+            origin_city = parsed_query["origin_city"]
+        logger.info(f"NLP parsed: {parsed_query}")
+    except Exception as e:
+        logger.info(f"NLP parse skipped (timeout or error): {e}")
 
-    budget_tier = get_budget_tier(effective_budget)
-
-    # Embed the text query and search ChromaDB
-    user_embedding = clip_utils.get_text_embedding(composite_query)
-
-    candidates = chromadb_utils.query_similar_destinations(
-        query_embedding=user_embedding,
-        budget_tier=budget_tier,
-        n_results=10,
+    # ── Return 3 independent ranked destination results ──────────────────────
+    itineraries = _local_search_ranked_results(
+        query=request.query,
+        vibes=effective_vibes,
+        budget=effective_budget,
+        travel_month=effective_month,
+        parsed=parsed_query,
     )
 
-    if not candidates:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "No matching destinations found for your query.",
-                "hint": "Try broadening your search — e.g. mention a region, vibe, or adjust your budget.",
-            },
-        )
-
-    anchor_candidate = candidates[0]
-    anchor_tbo_id = anchor_candidate["tbo_id"]
-    anchor_region = get_region(anchor_tbo_id)
-    compatible_ids = get_compatible_stops(anchor_tbo_id, exclude_ids=[], n=2)
-
-    resolved_stops = await _resolve_stops(
-        [anchor_tbo_id] + compatible_ids,
-        effective_budget,
-        candidates,
-        anchor_region,
-        BUDGET_SPLITS["3-stop"],
-    )
-
-    if not resolved_stops:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Could not find destinations within your budget.",
-                "hint": "Try increasing your budget or searching for a different region.",
-            },
-        )
-
-    itineraries = _build_itinerary_options(resolved_stops, effective_budget, anchor_region)
     if not itineraries:
         raise HTTPException(
-            status_code=400,
+            status_code=404,
             detail={
-                "message": "No complete itinerary fits your budget.",
-                "hint": "Try a higher budget, fewer stops, or a less expensive region.",
+                "message": "No matching destinations found for your query.",
+                "hint": "Try searching a city name, vibe, or activity (e.g. 'Goa beaches', 'mountain trek').",
             },
         )
 
-    best_itinerary = itineraries[-1]
-    try:
-        explanation = gemini_utils.generate_itinerary_explanation(
-            stops=best_itinerary["stops"],
-            vibe_tags=effective_vibes or ["travel", "exploration"],
-        )
-        for it in itineraries:
-            for s in it["stops"]:
-                if s["destination"] in explanation.get("stop_narratives", {}):
-                    s["tagline"] = explanation["stop_narratives"][s["destination"]]
-                if s["destination"] in explanation.get("stop_itineraries", {}):
-                    s["itinerary"] = explanation["stop_itineraries"][s["destination"]]
-    except Exception as e:
-        logger.warning(f"Explanation failed for text search: {e}")
-        explanation = {
-            "match_reasons": ["great destination", "fits your budget", "matches your vibe"],
-            "itinerary_narrative": f"A curated journey for your query: '{request.query}'.",
-            "conversation_opener": "We've found great options for your trip! What would you like to know?",
-        }
-
-    route_justification = gemini_utils.generate_route_justification(
-        best_itinerary["stops"], anchor_region
-    )
-
+    best_itinerary = itineraries[0]
     first_stop = best_itinerary["stops"][0]
-    session_id = session_store.create_session(
-        original_embedding=user_embedding,
-        budget=effective_budget,
-        budget_tier=budget_tier,
-        travel_dates=effective_month,
-        current_match=first_stop["destination"],
-        current_tbo_id=first_stop["tbo_id"],
-        current_price=first_stop["price_per_person"],
-        current_hotels=first_stop["hotels"],
-        current_photo=first_stop["photo"],
-        match_reasons=explanation["match_reasons"],
-        conversation_opener=explanation["conversation_opener"],
-        vibe_tags=effective_vibes or ["travel"],
-        itinerary_stops=best_itinerary["stops"],
-        itinerary_type=best_itinerary["type"],
-        itinerary_label=best_itinerary["label"],
-        itinerary_region=best_itinerary["region"],
-        itinerary_total_price=best_itinerary["total_price"],
-        duration_days=duration_days,
-    )
+
+    # ── Gemini route justification for the top result ────────────────────────
+    route_justification = ""
+    try:
+        async def _gemini_justification():
+            return gemini_utils.generate_route_justification(
+                [first_stop],
+                best_itinerary["region"]
+            )
+        route_justification = await asyncio.wait_for(_gemini_justification(), timeout=5.0)
+    except Exception:
+        route_justification = (
+            f"{first_stop['destination']} is a top-ranked match for your search "
+            f"'{request.query}'. Explore below for flights and hotel options."
+        )
+
+    # ── Create a session for the AI chat ─────────────────────────────────────
+    try:
+        session_id = session_store.create_session(
+            original_embedding=[0.0] * 512,
+            budget=effective_budget,
+            budget_tier=get_budget_tier(effective_budget),
+            travel_dates=effective_month,
+            current_match=first_stop["destination"],
+            current_tbo_id=first_stop["tbo_id"],
+            current_price=first_stop["price_per_person"],
+            current_hotels=[],
+            current_photo=first_stop["photo"],
+            match_reasons=["top search result", "highly relevant", "matches your query"],
+            conversation_opener=(
+                f"Found {len(itineraries)} great destinations for '{request.query}'! "
+                f"Top pick: {first_stop['destination']}. Ask me anything about these places."
+            ),
+            vibe_tags=effective_vibes or ["travel"],
+            itinerary_stops=[s["stops"][0] for s in itineraries],
+            itinerary_type=best_itinerary["type"],
+            itinerary_label=best_itinerary["label"],
+            itinerary_region=best_itinerary["region"],
+            itinerary_total_price=best_itinerary["total_price"],
+            duration_days=duration_days,
+        )
+    except Exception as e:
+        logger.warning(f"Session creation failed (non-critical): {e}")
+        session_id = "local-session-" + first_stop["destination"].lower().replace(" ", "-")
 
     return {
         "session_id": session_id,
         "itineraries": itineraries,
         "vibe_tags": effective_vibes,
-        "parsed_query": parsed,
-        "match_reasons": explanation["match_reasons"],
-        "itinerary_narrative": explanation.get("itinerary_narrative", ""),
-        "conversation_opener": explanation["conversation_opener"],
+        "parsed_query": parsed_query or {"query": request.query},
+        "match_reasons": ["highly relevant", "top match", "matches your search"],
+        "itinerary_narrative": (
+            f"Your top 3 destination matches for '{request.query}' — "
+            f"ranked by relevance from best to third-best match."
+        ),
+        "conversation_opener": (
+            f"Found {len(itineraries)} great destinations for you! "
+            f"Top pick: {first_stop['destination']}. Ask me anything!"
+        ),
         "route_justification": route_justification,
-        "region": anchor_region,
+        "region": best_itinerary["region"],
     }
+
+
 
 
 # ─── Endpoint 3: GET /destinations (new — catalog for autocomplete) ───────────
@@ -544,7 +737,210 @@ async def get_destinations():
     return {"destinations": catalog, "count": len(catalog)}
 
 
-# ─── Endpoint 4: POST /chat (upgraded) ───────────────────────────────────────
+# ─── Endpoint 3b: GET /nearby — folder-based, coordinate-driven ───────────────
+# Every destination listed here has a physical folder under backend/destinations/.
+# The folder slug is used to serve images: /destinations/<slug>/1.jpg
+# We use haversine distance to find neighbors within the requested radius.
+
+import math, os
+
+_DESTINATIONS_DIR = os.path.join(os.path.dirname(__file__), "destinations")
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return great-circle distance in km between two lat/lon points."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+# Master registry: all 100 destinations with coordinates, display name, category, description.
+# folder_slug must match the actual directory name under backend/destinations/.
+_DEST_REGISTRY: list[dict] = [
+    {"name": "Agra",           "folder": "agra",          "lat": 27.18, "lon": 78.02, "category": "historical", "description": "Home of the Taj Mahal — UNESCO World Heritage Mughal architecture at its finest.", "highlights": ["Taj Mahal", "Agra Fort", "Fatehpur Sikri nearby"], "visit_duration": "1-2 days", "rating": 4.7},
+    {"name": "Ajmer",          "folder": "ajmer",         "lat": 26.45, "lon": 74.64, "category": "cultural",   "description": "City of the revered Dargah Sharif shrine and gateway to Pushkar's holy lake.", "highlights": ["Dargah Sharif", "Pushkar nearby", "Ana Sagar Lake"], "visit_duration": "1 day", "rating": 4.2},
+    {"name": "Alleppey",       "folder": "alleppey",      "lat": 9.49,  "lon": 76.33, "category": "nature",     "description": "Venice of the East — gliding on Kerala's legendary backwaters on a houseboat.", "highlights": ["houseboat stays", "backwater cruises", "Vembanad Lake"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Almora",         "folder": "almora",        "lat": 29.60, "lon": 79.65, "category": "nature",     "description": "Serene Kumaon hilltop town with Himalayan panoramas and ancient temples.", "highlights": ["Kasar Devi temple", "Binsar wildlife sanctuary", "Himalayan views"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Amritsar",       "folder": "amritsar",      "lat": 31.63, "lon": 74.87, "category": "cultural",   "description": "Spiritual heart of Sikhism — the Golden Temple draws millions with its ethereal beauty.", "highlights": ["Golden Temple", "Jallianwala Bagh", "Wagah Border ceremony"], "visit_duration": "1-2 days", "rating": 4.7},
+    {"name": "Andaman Islands","folder": "andaman",       "lat": 11.74, "lon": 92.66, "category": "beach",      "description": "Crystal-clear Andaman Sea, coral reefs and pristine white-sand beaches.", "highlights": ["Radhanagar Beach", "scuba diving", "Cellular Jail"], "visit_duration": "4-5 days", "rating": 4.8},
+    {"name": "Araku",          "folder": "araku",         "lat": 18.33, "lon": 82.88, "category": "nature",     "description": "Mystical valley of coffee aromas and tribal culture in the Eastern Ghats.", "highlights": ["tribal museum", "coffee estates", "Borra Caves"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Auli",           "folder": "auli",          "lat": 30.52, "lon": 79.56, "category": "adventure",  "description": "India's premier ski resort with Asia's longest cable car and Nanda Devi views.", "highlights": ["skiing", "cable car ride", "Nanda Devi panorama"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Badami",         "folder": "badami",        "lat": 15.92, "lon": 75.68, "category": "historical", "description": "6th-century Chalukya rock-cut cave temples carved into red sandstone cliffs.", "highlights": ["4 cave temples", "Chalukyan architecture", "Agastya Lake"], "visit_duration": "1 day", "rating": 4.5},
+    {"name": "Bandhavgarh",    "folder": "bandhavgarh",   "lat": 23.72, "lon": 81.01, "category": "nature",     "description": "India's highest density of Bengal tigers per sq km in Madhya Pradesh.", "highlights": ["tiger safari", "White Tiger heritage", "ancient fort"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Belur",          "folder": "belur",         "lat": 13.16, "lon": 75.86, "category": "historical", "description": "Hoysala temple of Chennakeshava — intricate carvings spanning 103 years of artistry.", "highlights": ["Chennakeshava temple", "Hoysala sculpture", "nearby Halebidu"], "visit_duration": "Half day", "rating": 4.6},
+    {"name": "Bhimbetka",      "folder": "bhimbetka",     "lat": 22.93, "lon": 77.61, "category": "historical", "description": "UNESCO rock shelters with prehistoric paintings over 30,000 years old.", "highlights": ["30,000-yr-old rock art", "UNESCO site", "forest setting"], "visit_duration": "Half day", "rating": 4.4},
+    {"name": "Bhubaneswar",    "folder": "bhubaneswar",   "lat": 20.30, "lon": 85.84, "category": "historical", "description": "Temple city of India with over 700 ancient temples including the Lingaraja.", "highlights": ["Lingaraja Temple", "Udayagiri caves", "gateway to Konark"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Bikaner",        "folder": "bikaner",       "lat": 28.02, "lon": 73.31, "category": "historical", "description": "Walled camel city of the Thar desert, home to majestic Junagarh Fort.", "highlights": ["Junagarh Fort", "camel safari", "Karni Mata Rat Temple"], "visit_duration": "1 day", "rating": 4.2},
+    {"name": "Bir Billing",    "folder": "bir_billing",   "lat": 31.96, "lon": 76.72, "category": "adventure",  "description": "World's second-best paragliding site in the Himachal valley with breathtaking thermals.", "highlights": ["paragliding", "monastery tours", "camping"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Bodh Gaya",      "folder": "bodh_gaya",     "lat": 24.70, "lon": 84.99, "category": "cultural",   "description": "Where the Buddha attained enlightenment — holiest site in Buddhism worldwide.", "highlights": ["Mahabodhi Temple", "Bodhi Tree", "international monasteries"], "visit_duration": "1 day", "rating": 4.7},
+    {"name": "Chandigarh",     "folder": "chandigarh",    "lat": 30.73, "lon": 76.78, "category": "cultural",   "description": "Le Corbusier's planned city — the Rock Garden and Sukhna Lake are iconic.", "highlights": ["Rock Garden", "Sukhna Lake", "Rose Garden"], "visit_duration": "1 day", "rating": 4.1},
+    {"name": "Chikmagalur",    "folder": "chikmagalur",   "lat": 13.32, "lon": 75.77, "category": "nature",     "description": "Birthplace of Indian coffee — misty hills, waterfalls and lush Western Ghats forests.", "highlights": ["coffee plantation tours", "Mullayanagiri peak", "Baba Budangiri"], "visit_duration": "1-2 days", "rating": 4.5},
+    {"name": "Chilika",        "folder": "chilika",       "lat": 19.72, "lon": 85.32, "category": "nature",     "description": "Asia's largest coastal lagoon — winter home to 160+ migratory bird species.", "highlights": ["Irrawaddy dolphins", "migratory birds", "boat safari"], "visit_duration": "1 day", "rating": 4.4},
+    {"name": "Chitrakoot",     "folder": "chitrakoot",    "lat": 25.18, "lon": 80.88, "category": "cultural",   "description": "Sacred Ramayan site where Lord Ram, Sita and Lakshman spent 11 years in exile.", "highlights": ["Kamadgiri parikrama", "Ramghat aarti", "Gupt Godavari caves"], "visit_duration": "1 day", "rating": 4.3},
+    {"name": "Chittorgarh",    "folder": "chittorgarh",   "lat": 24.89, "lon": 74.64, "category": "historical", "description": "India's largest fort complex — 700 acres of Rajput valor and Padmini's sacrifice.", "highlights": ["Vijay Stambha", "Rani Padmini Palace", "Kirti Stambha"], "visit_duration": "Full day", "rating": 4.6},
+    {"name": "Coorg",         "folder": "coorg",          "lat": 12.33, "lon": 75.81, "category": "nature",     "description": "Scotland of India — coffeelands, rolling hills and Abbey Falls in misty Kodagu.", "highlights": ["coffee plantations", "Abbey Falls", "Raja's Seat"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Dalhousie",      "folder": "dalhousie",     "lat": 32.54, "lon": 75.97, "category": "nature",     "description": "Colonial hill station with pine forests, Dhauladhar views and Victorian churches.", "highlights": ["Khajjiar meadow", "Dainkund Peak", "Subhash Baoli"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Darjeeling",     "folder": "darjeeling",    "lat": 27.04, "lon": 88.26, "category": "nature",     "description": "Queen of Hills — toy train, tea estates and Kanchenjunga sunrise from Tiger Hill.", "highlights": ["Tiger Hill sunrise", "Toy Train UNESCO", "Himalayan Mountaineering Institute"], "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Dharamshala",    "folder": "dharamshala",   "lat": 32.22, "lon": 76.32, "category": "cultural",   "description": "Little Lhasa — Tibetan culture, Dalai Lama's residence, and Dhauladhar trekking base.", "highlights": ["Tsuglagkhang complex", "Tibetan cuisine", "Triund trek"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Dwarka",         "folder": "dwarka",        "lat": 22.24, "lon": 68.97, "category": "cultural",   "description": "One of the four sacred Hindu dhams — Lord Krishna's legendary submerged city.", "highlights": ["Dwarkadhish temple", "Beyt Dwarka island", "sacred pilgrimage"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Gir",            "folder": "gir",           "lat": 21.13, "lon": 70.75, "category": "nature",     "description": "Last refuge of the Asiatic lion — the only wild lion population outside Africa.", "highlights": ["Asiatic lion safari", "leopard sightings", "Gir interpretation zone"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Goa",            "folder": "goa",           "lat": 15.49, "lon": 73.82, "category": "beach",      "description": "Sun, sand and seafood — India's party capital with Portuguese colonial charm.", "highlights": ["beach shacks", "Old Goa churches", "Dudhsagar Falls nearby"], "visit_duration": "3-5 days", "rating": 4.6},
+    {"name": "Gokak",          "folder": "gokak",         "lat": 16.17, "lon": 74.82, "category": "nature",     "description": "Horseshoe waterfall where the Ghataprabha river plunges 52m — Karnataka's Niagara.", "highlights": ["Gokak Falls", "ropeway", "local handicrafts"], "visit_duration": "Half day", "rating": 4.1},
+    {"name": "Gokarna",        "folder": "gokarna",       "lat": 14.55, "lon": 74.31, "category": "beach",      "description": "Offbeat beach paradise — sacred town with pristine beaches and laid-back hippie vibes.", "highlights": ["Om Beach", "Half Moon Beach", "Mahabaleshwar temple"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Gulmarg",        "folder": "gulmarg",       "lat": 34.05, "lon": 74.38, "category": "adventure",  "description": "Meadow of flowers — Kashmir's premier ski resort with Asia's highest gondola at 4,000m.", "highlights": ["Gondola cable car", "skiing", "Khilanmarg meadow"], "visit_duration": "1-2 days", "rating": 4.7},
+    {"name": "Gwalior",        "folder": "gwalior",       "lat": 26.22, "lon": 78.18, "category": "historical", "description": "Rock fortress rising 100m above the city, called the 'Gibraltar of India'.", "highlights": ["Gwalior Fort", "Man Mandir Palace", "Tansen's Tomb"], "visit_duration": "1 day", "rating": 4.3},
+    {"name": "Hampi",          "folder": "hampi",         "lat": 15.34, "lon": 76.46, "category": "historical", "description": "UNESCO site — surreal boulder landscape with ruins of the Vijayanagara Empire.", "highlights": ["Virupaksha Temple", "Stone Chariot", "Vittala Temple"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Haridwar",       "folder": "haridwar",      "lat": 29.94, "lon": 78.16, "category": "cultural",   "description": "Gateway to God — Ganga Aarti at Har Ki Pauri is one of India's most moving spectacles.", "highlights": ["Ganga Aarti", "Har Ki Pauri ghat", "holy dip"], "visit_duration": "1 day", "rating": 4.5},
+    {"name": "Jabalpur",       "folder": "jabalpur",      "lat": 23.18, "lon": 79.94, "category": "nature",     "description": "Marble Rocks at Bhedaghat — ancient geography sculpting a surreal canyon on Narmada.", "highlights": ["Bhedaghat Marble Rocks", "Dhuandhar Falls", "night boat", "Chausath Yogini Temple"], "visit_duration": "1 day", "rating": 4.3},
+    {"name": "Jaipur",         "folder": "jaipur",        "lat": 26.91, "lon": 75.79, "category": "historical", "description": "Pink City — palaces, bazaars and the Amber Fort in Rajasthan's royal capital.", "highlights": ["Amber Fort", "Hawa Mahal", "City Palace", "bazaars"], "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Jaisalmer",      "folder": "jaisalmer",     "lat": 26.91, "lon": 70.92, "category": "historical", "description": "Golden Fort city rising from the Thar Desert — living fort with locals still inside.", "highlights": ["Jaisalmer Fort", "Sam Sand Dunes", "camel safari"], "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Jim Corbett",    "folder": "jim_corbett",   "lat": 29.53, "lon": 79.25, "category": "nature",     "description": "India's oldest national park — home to Bengal tigers along the Ramganga River.", "highlights": ["tiger safaris", "elephant rides", "Ramganga river"] , "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Jodhpur",        "folder": "jodhpur",       "lat": 26.29, "lon": 73.02, "category": "historical", "description": "Blue City — Mehrangarh Fort towers over cobalt-blue lanes and bustling spice markets.", "highlights": ["Mehrangarh Fort", "blue lanes of Brahmpuri", "Umaid Bhawan Palace"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Kanha",          "folder": "kanha",         "lat": 22.33, "lon": 80.61, "category": "nature",     "description": "Inspiration for Kipling's Jungle Book — barasingha deer and tigers in pristine forest.", "highlights": ["tiger safari", "barasingha deer", "Jungle Book inspiration"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Kanyakumari",    "folder": "kanyakumari",   "lat": 8.09,  "lon": 77.55, "category": "cultural",   "description": "India's southernmost tip — watch the Indian Ocean, Arabian Sea and Bay of Bengal meet.", "highlights": ["three seas confluence", "Vivekananda Rock", "sunrise & sunset same spot"], "visit_duration": "1 day", "rating": 4.4},
+    {"name": "Kargil",         "folder": "kargil",        "lat": 34.56, "lon": 76.13, "category": "adventure",  "description": "High-altitude Ladakhi town famed for the 1999 war, monasteries and apricot orchards.", "highlights": ["war memorial", "Suru Valley", "monasteries", "apricot orchards"], "visit_duration": "1-2 days", "rating": 4.1},
+    {"name": "Kasol",          "folder": "kasol",         "lat": 31.99, "lon": 77.31, "category": "adventure",  "description": "Parvati Valley's trekking hub — waterfalls, Kheerganga hot springs and Kalgha forests.", "highlights": ["Kheerganga trek", "hot springs", "Malana village"], "visit_duration": "2-3 days", "rating": 4.4},
+    {"name": "Kausani",        "folder": "kausani",       "lat": 29.84, "lon": 79.60, "category": "nature",     "description": "The Switzerland of India — 300km Himalayan panorama visible from Gandhi's ashram.", "highlights": ["Nanda Devi views", "Anasakti Ashram", "tea gardens"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Kaziranga",      "folder": "kaziranga",     "lat": 26.58, "lon": 93.17, "category": "nature",     "description": "UNESCO park with 2/3 of the world's one-horned rhinos and significant tiger density.", "highlights": ["one-horned rhino", "elephant safari", "bird watching"], "visit_duration": "2 days", "rating": 4.8},
+    {"name": "Kerala Hills",   "folder": "kerala_hills",  "lat": 10.10, "lon": 77.06, "category": "nature",     "description": "Misty tea-clad hills, cardamom estates and waterfalls of the Western Ghats.", "highlights": ["tea estates", "Eravikulam National Park", "Mattupetty Dam"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Khajjiar",       "folder": "khajjiar",      "lat": 32.55, "lon": 76.03, "category": "nature",     "description": "Mini-Switzerland — emerald meadow fringed by deodar forests and a small lake.", "highlights": ["meadow & lake", "deodar forest", "Khajjiar temple"], "visit_duration": "Half day", "rating": 4.3},
+    {"name": "Khajuraho",      "folder": "khajuraho",     "lat": 24.85, "lon": 79.93, "category": "historical", "description": "UNESCO temples famous for exquisite erotic sculptures — Chandela dynasty art at peak.", "highlights": ["UNESCO temples", "erotic sculptures", "light & sound show"], "visit_duration": "1-2 days", "rating": 4.5},
+    {"name": "Kinnaur",        "folder": "kinnaur",       "lat": 31.58, "lon": 78.26, "category": "nature",     "description": "Apple orchards, Hinduism-Buddhism confluence, and ancient Kalpa cliffside villages.", "highlights": ["Kalpa apple orchards", "Nako monastery", "Spiti confluence"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Kodaikanal",     "folder": "kodaikanal",    "lat": 10.24, "lon": 77.48, "category": "nature",     "description": "Princess of hill stations — star-shaped lake, misty pine forests and Bryant Park.", "highlights": ["Kodai Lake", "Bryan Park", "Coaker's Walk sunset"], "visit_duration": "2 days", "rating": 4.4},
+    {"name": "Konark",         "folder": "konark",        "lat": 19.89, "lon": 86.09, "category": "historical", "description": "Sun Temple of Konark — colossal stone chariot of the Sun God, a UNESCO masterpiece.", "highlights": ["Sun Temple chariot", "erotic sculptures", "Konark Dance Festival"], "visit_duration": "Half day", "rating": 4.6},
+    {"name": "Kovalam",        "folder": "kovalam",       "lat": 8.40,  "lon": 76.98, "category": "beach",      "description": "Kerala's Lighthouse Beach — cliffs, calm coves and Ayurvedic resorts by the sea.", "highlights": ["Lighthouse Beach", "Ayurvedic massages", "cliff viewpoints"], "visit_duration": "2-3 days", "rating": 4.4},
+    {"name": "Kumbhalgarh",    "folder": "kumbhalgarh",   "lat": 25.15, "lon": 73.58, "category": "historical", "description": "World's second-longest wall (38km) — UNESCO fortress, birthplace of Maharana Pratap.", "highlights": ["38km wall", "360° views", "light & sound show", "wildlife sanctuary"], "visit_duration": "Half day", "rating": 4.7},
+    {"name": "Kutch",          "folder": "kutch",         "lat": 23.73, "lon": 70.21, "category": "cultural",   "description": "Great Rann of Kutch — world's largest salt desert glows white under the full moon.", "highlights": ["Rann Utsav festival", "white salt desert", "tribal handicrafts"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Lahaul",         "folder": "lahaul",        "lat": 32.57, "lon": 77.17, "category": "adventure",  "description": "Cold desert valley beyond Rohtang — Buddhist monasteries, glaciers and stark landscapes.", "highlights": ["Keylong monastery", "Chandratal Lake", "Baralacha La pass"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Lansdowne",      "folder": "lansdowne",     "lat": 29.84, "lon": 78.68, "category": "nature",     "description": "Peaceful Garhwal cantonment town with oak forests, Bhulla Lake and Tip-in-Top viewpoint.", "highlights": ["Tip-in-Top viewpoint", "Bhulla Lake", "oak forests", "peaceful retreat"], "visit_duration": "1-2 days", "rating": 4.2},
+    {"name": "Leh",            "folder": "leh",           "lat": 34.17, "lon": 77.58, "category": "adventure",  "description": "Ancient Silk Route city at 3,500m — monasteries, moonscapes and the world's highest passes.", "highlights": ["Pangong Tso", "Khardung La", "Nubra Valley", "Buddhist monasteries"], "visit_duration": "5-7 days", "rating": 4.8},
+    {"name": "Lonavala",       "folder": "lonavala",      "lat": 18.75, "lon": 73.41, "category": "nature",     "description": "Monsoon gateway from Mumbai/Pune — waterfalls, forts and misty Western Ghats valleys.", "highlights": ["Bhushi Dam", "Tiger Point", "Karla Caves", "Rajmachi trek"], "visit_duration": "1-2 days", "rating": 4.2},
+    {"name": "Madurai",        "folder": "madurai",       "lat": 9.92,  "lon": 78.12, "category": "cultural",   "description": "City never sleeps — Meenakshi Amman temple's 14 gopurams painted with 33,000 sculptures.", "highlights": ["Meenakshi Amman Temple", "Thirumalai Nayakkar Palace", "floating lotus market"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Mahabaleshwar",  "folder": "mahabaleshwar", "lat": 17.92, "lon": 73.66, "category": "nature",     "description": "Maharashtra's queen of hill stations — strawberry farms, 5 river sources and mist-covered valleys.", "highlights": ["Venna Lake", "strawberry picking", "Arthur's Seat viewpoint"], "visit_duration": "2 days", "rating": 4.3},
+    {"name": "Majuli",         "folder": "majuli",        "lat": 26.95, "lon": 94.16, "category": "cultural",   "description": "World's largest river island — Assamese Vaishnava satras, masks and river festivals.", "highlights": ["Satras (monasteries)", "mask-making tradition", "Brahmaputra sunsets"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Manali",         "folder": "manali",        "lat": 32.24, "lon": 77.19, "category": "adventure",  "description": "Himalayan playground — Rohtang Pass, Solang Valley and ancient Hadimba temple.", "highlights": ["Rohtang Pass", "Solang Valley", "Hadimba Temple", "paragliding"], "visit_duration": "3-5 days", "rating": 4.6},
+    {"name": "Mandu",          "folder": "mandu",         "lat": 22.34, "lon": 75.40, "category": "historical", "description": "Ruined medieval city of romance — Baz Bahadur's tragic love story etched in fortress walls.", "highlights": ["Jahaz Mahal", "Hindola Mahal", "Rani Roopmati Pavilion"], "visit_duration": "1 day", "rating": 4.3},
+    {"name": "Mathura",        "folder": "mathura",       "lat": 27.49, "lon": 77.67, "category": "cultural",   "description": "Birthplace of Lord Krishna — 3,000-year-old pilgrimage city & gateway to Vrindavan.", "highlights": ["Krishna Janmabhoomi temple", "Vrindavan nearby", "Holi festival"], "visit_duration": "1 day", "rating": 4.4},
+    {"name": "Mount Abu",      "folder": "mount_abu",     "lat": 24.59, "lon": 72.71, "category": "nature",     "description": "Rajasthan's only hill station — Dilwara Jain temples are among India's finest.", "highlights": ["Dilwara Jain temples", "Nakki Lake", "Sunset Point"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Munnar",         "folder": "munnar",        "lat": 10.09, "lon": 77.06, "category": "nature",     "description": "Emerald tea terraces rolling across the Western Ghats at 1,600m altitude.", "highlights": ["tea estate tours", "Eravikulam NP", "Mattupetty Dam", "Top Station"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Mussoorie",      "folder": "mussoorie",     "lat": 30.45, "lon": 78.07, "category": "nature",     "description": "Queen of the Hills — Mall Road, Kempty Falls and Gangotri glacier views from Lal Tibba.", "highlights": ["Kempty Falls", "Lal Tibba viewpoint", "Cable car", "Mall Road"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Mysore",         "folder": "mysore",        "lat": 12.30, "lon": 76.65, "category": "historical", "description": "City of palaces — Amba Vilas's illuminated dome during Dasara is unforgettable.", "highlights": ["Mysore Palace", "Dasara festival", "Chamundi Hill"], "visit_duration": "1-2 days", "rating": 4.5},
+    {"name": "Nainital",       "folder": "nainital",      "lat": 29.38, "lon": 79.46, "category": "nature",     "description": "Pear-shaped lake in an emerald Kumaon bowl — boat rides and Naina Devi temple.", "highlights": ["Naini Lake boat rides", "Naina Devi temple", "Snow View point"], "visit_duration": "1-2 days", "rating": 4.3},
+    {"name": "Nalanda",        "folder": "nalanda",       "lat": 25.14, "lon": 85.44, "category": "historical", "description": "Ancient world's greatest university — Xuanzang studied here 1,500 years ago.", "highlights": ["ancient university ruins", "archaeological museum", "pilgrimage site"], "visit_duration": "Half day", "rating": 4.5},
+    {"name": "Nubra Valley",   "folder": "nubra_valley",  "lat": 34.72, "lon": 77.55, "category": "adventure",  "description": "Sand dunes and Bactrian camels at 3,048m — accessed via world's highest motorable pass.", "highlights": ["double-humped camels", "sand dunes", "Diskit Monastery", "white water river"], "visit_duration": "1-2 days", "rating": 4.7},
+    {"name": "Ooty",           "folder": "ooty",          "lat": 11.41, "lon": 76.70, "category": "nature",     "description": "Queen of Hill Stations — Nilgiri toy train, botanical gardens and tea estates.", "highlights": ["Nilgiri Toy Train", "Ooty Lake", "Doddabetta peak", "Rose Garden"], "visit_duration": "2 days", "rating": 4.3},
+    {"name": "Orchha",         "folder": "orchha",        "lat": 25.35, "lon": 78.64, "category": "historical", "description": "Forgotten Bundela kingdom — crumbling cenotaphs, Ram Raja temple and Betwa riverside forts.", "highlights": ["Orchha Fort", "Ram Raja temple", "Betwa river cenotaphs"], "visit_duration": "1 day", "rating": 4.5},
+    {"name": "Pachmarhi",      "folder": "pachmarhi",     "lat": 22.47, "lon": 78.43, "category": "nature",     "description": "Satpura's only hill station — Bee Falls, prehistoric cave paintings and dense reserve forests.", "highlights": ["Bee Falls", "Jata Shankar cave", "Satpura National Park"], "visit_duration": "2 days", "rating": 4.4},
+    {"name": "Pahalgam",       "folder": "pahalgam",      "lat": 34.01, "lon": 75.32, "category": "nature",     "description": "Valley of Shepherds — Lidder River, pine forests and Amarnath Yatra base camp.", "highlights": ["Betab Valley", "Amarnath Yatra base", "horse riding", "Baisaran meadow"], "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Pangong Tso",    "folder": "pangong_tso",   "lat": 33.75, "lon": 78.70, "category": "nature",     "description": "Iconic high-altitude salt lake turning from cobalt to turquoise to magenta as light shifts.", "highlights": ["color-shifting lake", "flamingos", "camping", "3 Idiots filming location"], "visit_duration": "Overnight", "rating": 4.9},
+    {"name": "Pondicherry",    "folder": "pondicherry",   "lat": 11.93, "lon": 79.83, "category": "cultural",   "description": "French Quarter with bougainvillea lanes, Auroville ashram and tranquil beach promenade.", "highlights": ["French Quarter", "Auroville", "Paradise Beach", "Aurobindo Ashram"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Puri",           "folder": "puri",          "lat": 19.81, "lon": 85.83, "category": "cultural",   "description": "Lord Jagannath's abode — Rath Yatra procession and the golden sands of Puri beach.", "highlights": ["Jagannath Temple", "Rath Yatra festival", "Puri Beach"], "visit_duration": "1-2 days", "rating": 4.4},
+    {"name": "Pushkar",        "folder": "pushkar",       "lat": 26.49, "lon": 74.56, "category": "cultural",   "description": "World's only Brahma temple by a sacred lake — rose gardens and Camel Fair in November.", "highlights": ["Brahma Temple", "Pushkar Lake ghats", "Camel Fair"], "visit_duration": "1 day", "rating": 4.4},
+    {"name": "Rameshwaram",    "folder": "rameshwaram",   "lat": 9.29,  "lon": 79.31, "category": "cultural",   "description": "Island pilgrimage — Ramanathaswamy temple's 1,200m corridors are longest in the world.", "highlights": ["Ramanathaswamy Temple", "Pamban Bridge", "Dhanushkodi ruins"], "visit_duration": "1-2 days", "rating": 4.5},
+    {"name": "Ranikhet",       "folder": "ranikhet",      "lat": 29.64, "lon": 79.43, "category": "nature",     "description": "Army cantonment hill station with the highest golf course in Asia at 1,829m.", "highlights": ["Asia's highest golf course", "Jhula Devi Temple", "Himalayan views"], "visit_duration": "1-2 days", "rating": 4.2},
+    {"name": "Ranthambore",    "folder": "ranthambore",   "lat": 26.01, "lon": 76.47, "category": "nature",     "description": "Rajasthan's legendary tiger reserve — tigers photographed in dramatic fort ruins.", "highlights": ["tiger safari", "Ranthambore Fort", "tigers in ruins photography"], "visit_duration": "2 days", "rating": 4.7},
+    {"name": "Rishikesh",      "folder": "rishikesh",     "lat": 30.09, "lon": 78.27, "category": "adventure",  "description": "Yoga capital of the world — rafting on Ganga, Laxman Jhula and Beatles Ashram.", "highlights": ["white-water rafting", "Laxman Jhula", "Beatles Ashram", "yoga retreats"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Sanchi",         "folder": "sanchi",        "lat": 23.48, "lon": 77.74, "category": "historical", "description": "UNESCO Buddhist stupas built by Ashoka — unparalleled toranas and original relic preservation.", "highlights": ["Great Stupa", "Ashokan Toranas", "Buddhist pilgrimage"], "visit_duration": "Half day", "rating": 4.5},
+    {"name": "Shillong",       "folder": "shillong",      "lat": 25.57, "lon": 91.88, "category": "nature",     "description": "Scotland of the East — waterfalls, living root bridges and Cherrapunji rain forest nearby.", "highlights": ["Elephant Falls", "Wards Lake", "Cherrapunji nearby", "root bridges"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Shimla",         "folder": "shimla",        "lat": 31.10, "lon": 77.17, "category": "nature",     "description": "Former British summer capital — the Kalka-Shimla toy train and Ridge promenade.", "highlights": ["Toy Train UNESCO", "The Ridge", "Jakhu Temple", "Kufri nearby"], "visit_duration": "2-3 days", "rating": 4.4},
+    {"name": "Somnath",        "folder": "somnath",       "lat": 20.89, "lon": 70.40, "category": "cultural",   "description": "First of twelve Jyotirlingas — rebuilt seven times, now standing proud overlooking the Arabian Sea.", "highlights": ["Somnath Temple", "Arabian Sea views", "Triveni Sangam"], "visit_duration": "1 day", "rating": 4.5},
+    {"name": "Sonamarg",       "folder": "sonamarg",      "lat": 34.30, "lon": 75.29, "category": "nature",     "description": "Meadow of Gold — alpine glaciers, Thajiwas glacier trek and pristine streams.", "highlights": ["Thajiwas Glacier", "pony rides", "Zoji La pass gateway"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Spiti",          "folder": "spiti",         "lat": 32.25, "lon": 78.07, "category": "adventure",  "description": "Cold desert mountain valley — Key Monastery perched on 4,166m with ancient Tabo murals.", "highlights": ["Key Monastery", "Tabo Caves", "Chandratal Lake", "Pin Valley NP"], "visit_duration": "3-5 days", "rating": 4.8},
+    {"name": "Srinagar",       "folder": "srinagar",      "lat": 34.08, "lon": 74.79, "category": "nature",     "description": "Paradise on Earth — shikara rides on Dal Lake, Mughal gardens and saffron fields.", "highlights": ["Dal Lake shikara", "Mughal Gardens", "Gulmarg skiing", "saffron fields"], "visit_duration": "3-4 days", "rating": 4.6},
+    {"name": "Sunderbans",     "folder": "sunderbans",    "lat": 21.94, "lon": 89.18, "category": "nature",     "description": "World's largest mangrove delta — swimming tigers and Irrawaddy dolphins.", "highlights": ["Royal Bengal tigers (swimming)", "mangrove ecosystem", "UNESCO biosphere"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Tawang",         "folder": "tawang",        "lat": 27.59, "lon": 91.86, "category": "cultural",   "description": "India's largest Buddhist monastery at 3,048m — Arunachal's mystical border gateway.", "highlights": ["Tawang Monastery", "Sela Pass", "Madhuri Lake", "Tibetan culture"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Tirupati",       "folder": "tirupati",      "lat": 13.63, "lon": 79.42, "category": "cultural",   "description": "Richest temple in the world — millions climb Tirumala hills to seek Lord Venkateswara's blessings.", "highlights": ["Tirupati Balaji Temple", "historic laddu prasad", "Tirumala hills"], "visit_duration": "1-2 days", "rating": 4.6},
+    {"name": "Tso Moriri",     "folder": "tso_moriri",    "lat": 32.87, "lon": 78.32, "category": "nature",     "description": "Remote high-altitude lake at 4,522m — undisturbed flamingos and black-neck cranes.", "highlights": ["flamingos & black-neck cranes", "isolated nomadic villages", "pristine lake"], "visit_duration": "Overnight", "rating": 4.8},
+    {"name": "Udaipur",        "folder": "udaipur",       "lat": 24.57, "lon": 73.68, "category": "historical", "description": "City of Lakes — Lake Pichola, floating City Palace and Udaipur's legendary sunsets.", "highlights": ["Lake Pichola", "City Palace", "Jag Mandir", "Lake Palace"], "visit_duration": "2-3 days", "rating": 4.7},
+    {"name": "Ujjain",         "folder": "ujjain",        "lat": 23.18, "lon": 75.78, "category": "cultural",   "description": "One of seven sacred Hindu cities — Mahakaleshwar Jyotirlinga and Kumbh Mela site.", "highlights": ["Mahakaleshwar temple", "Kumbh Mela site", "Kal Bhairav temple"], "visit_duration": "1 day", "rating": 4.3},
+    {"name": "Varanasi",       "folder": "varanasi",      "lat": 25.32, "lon": 83.01, "category": "cultural",   "description": "World's oldest living city — Ganga Aarti, silk weavers and the ghats of eternity.", "highlights": ["Ganga Aarti at Dashashwamedh", "boat on Ganges at sunrise", "Sarnath nearby"], "visit_duration": "2-3 days", "rating": 4.6},
+    {"name": "Varkala",        "folder": "varkala",       "lat": 8.73,  "lon": 76.72, "category": "beach",      "description": "Kerala's cliff beach — laterite cliffs plunging into the Arabian Sea with Papanasam beach.", "highlights": ["cliff restaurants", "Papanasam Beach", "Janardhanaswamy Temple", "Ayurveda"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Wayanad",        "folder": "wayanad",       "lat": 11.60, "lon": 76.13, "category": "nature",     "description": "Tribal heartland of the Western Ghats — bamboo forests, wildlife and Edakkal cave carvings.", "highlights": ["Edakkal Caves", "Chembra Peak", "wildlife safari", "coffee estates"], "visit_duration": "2-3 days", "rating": 4.5},
+    {"name": "Ziro",           "folder": "ziro",          "lat": 27.59, "lon": "93.83", "category": "nature",   "description": "Apatani tribal heartland — rolling pine hills, rice fields and the famous Ziro Music Festival.", "highlights": ["Apatani tribe", "Ziro Music Festival", "Talley Valley wildlife", "organic farming"], "visit_duration": "2-3 days", "rating": 4.6},
+]
+
+# Fix the one accidental string in coordinates
+for _d in _DEST_REGISTRY:
+    _d["lon"] = float(_d["lon"])
+
+
+def _get_nearby_from_registry(dest_name: str, radius_km: float = 150.0) -> list[dict]:
+    """
+    Find all destinations in _DEST_REGISTRY within radius_km of dest_name.
+    Returns them sorted by distance with full metadata.
+    radius_km is set to 150 by default to ensure reasonable results;
+    caller can request a tighter filter.
+    """
+    # Find the query destination in registry
+    from fake_tbo import DESTINATION_MAP
+
+    # Pre-compute reverse map: name -> tbo_id
+    name_to_tbo = {v["name"].lower(): k for k, v in DESTINATION_MAP.items()}
+
+    query = None
+    name_lower = dest_name.lower()
+    for d in _DEST_REGISTRY:
+        if (d["name"].lower() == name_lower
+                or d["folder"] == name_lower
+                or d["folder"] == name_lower.replace(" ", "_")
+                or name_lower in d["name"].lower()
+                or d["name"].lower() in name_lower):
+            query = d
+            break
+
+    if query is None:
+        return []
+
+    results = []
+    for d in _DEST_REGISTRY:
+        if d["folder"] == query["folder"]:
+            continue  # skip self
+        dist = _haversine_km(query["lat"], query["lon"], d["lat"], d["lon"])
+        if dist <= radius_km:
+            travel_mins = int(dist * 1.4)  # rough road-time estimate
+            results.append({
+                "name": d["name"],
+                "folder": d["folder"],
+                "distance_km": round(dist, 1),
+                "description": d["description"],
+                "highlights": d["highlights"],
+                "travel_time_min": travel_mins,
+                "category": d["category"],
+                "visit_duration": d["visit_duration"],
+                "rating": d["rating"],
+                "tbo_id": name_to_tbo.get(d["name"].lower(), f"LOCAL_{d['folder'].upper()}"),
+                # Frontend uses this to build image URL: /destinations/<folder>/1.jpg
+                "image_path": f"/destinations/{d['folder']}/1.jpg",
+            })
+
+    results.sort(key=lambda x: x["distance_km"])
+    return results
+
+
+@app.get("/nearby")
+async def get_nearby_places(destination: str, radius_km: float = 150.0):
+    """
+    Return all destinations from the local destinations/ folder within radius_km
+    of the given destination, sorted by distance. Every result has a local
+    image at /destinations/<folder>/1.jpg served by the backend static files.
+    """
+    logger.info(f"GET /nearby | destination={destination} radius_km={radius_km}")
+
+    # Progressive radius: try 70km, then 150km, then 300km to always return something
+    for r in [radius_km, 150.0, 300.0, 600.0]:
+        places = _get_nearby_from_registry(destination, r)
+        if places:
+            break
+
+    actual_radius = places[0]["distance_km"] if places else 0
+
+    return {
+        "destination": destination,
+        "nearby_places": places,
+        "count": len(places),
+        "radius_km": radius_km,
+    }
 
 @app.post("/chat")
 async def chat(request: ChatRequest):

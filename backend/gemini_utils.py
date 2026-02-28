@@ -13,27 +13,25 @@ import re
 import time
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.5-flash"
-_gemini_client: genai.GenerativeModel | None = None
+GEMINI_MODEL = "gemini-2.0-flash"
+_gemini_client: genai.Client | None = None
 
-
-def get_gemini_model() -> genai.GenerativeModel:
+def get_gemini_model() -> genai.Client:
     """Initialise Gemini API client once."""
     global _gemini_client
     if _gemini_client is None:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
-        genai.configure(api_key=api_key)
-        _gemini_client = genai.GenerativeModel(GEMINI_MODEL)
-        logger.info(f"Gemini model '{GEMINI_MODEL}' initialised")
+        _gemini_client = genai.Client(api_key=api_key)
+        logger.info(f"Gemini client initialized. Targeting '{GEMINI_MODEL}'")
     return _gemini_client
 
 
@@ -55,16 +53,18 @@ def _extract_json(text: str) -> dict:
 
 def _retry_gemini(prompt: str, max_attempts: int = 2) -> str:
     """Call Gemini with automatic 429 retry. Returns raw text."""
-    model = get_gemini_model()
+    client = get_gemini_model()
     for attempt in range(max_attempts):
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             err_str = str(e)
             if "429" in err_str and attempt == 0:
-                logger.warning("Gemini 429 rate limit — waiting 35s...")
-                time.sleep(35)
+                logger.warning("Gemini 429 rate limit — retrying immediately...")
                 continue
             raise
     raise RuntimeError("Gemini failed after retries")
@@ -219,35 +219,46 @@ Return ONLY this JSON (no extra text):
 
 # ── Chat Response ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT_TEMPLATE = """You are an AI travel co-planner for VibeTravel. You help users plan and refine their multi-city Indian travel itineraries.
+SYSTEM_PROMPT_TEMPLATE = """You are an open, friendly, and completely unconstrained AI conversationalist. You are currently chatting with a user who happens to be looking at a travel app, but your primary goal is to just chat with them about WHATEVER they want.
 
-Rules:
-1. Be helpful, warm, and conversational. Keep responses under 4 sentences.
-2. The user has a {stop_count}-stop itinerary: {itinerary_summary}. Discuss all stops when relevant.
-3. You CAN discuss hotels, prices, and features from the session state.
-4. If the user wants a completely different destination, return action "search_again".
-5. If the user wants to reorder cities, return action "reorder_stops" with params.new_order as a list of destination names.
-6. If the user wants to change transport mode, return action "change_transport" with params.leg_index and params.mode.
-7. If the user wants more or fewer days at a stop, return action "adjust_days" with params.stop_index and params.days.
-8. When the user is ready to book, return action "confirm_booking".
+CONVERSATION RULES:
+1. You MUST reply naturally to whatever the user says. If they say "hi", say "hello there!". If they ask a joke, tell a joke. If they ask about quantum physics, explain it.
+2. DO NOT force the conversation back to travel. DO NOT act like a customer service agent. DO NOT say "I want to help find the perfect destination". Just be a cool AI to chat with.
+3. Only talk about their trip IF THEY SPECIFICALLY ASK ABOUT IT.
+4. Keep your answers brief, human-like, and conversational (1-3 sentences unless they ask for detail).
+5. NEVER repeat yourself. Every response must be new.
 
-Session state:
-- Budget: ₹{budget:,}
-- Photo vibe: {vibe_tags}
-- Itinerary type: {itinerary_label} ({itinerary_type})
-- Total trip duration: {duration_days} days
-- Itinerary stops:
+YOU ARE TALKING TO A USER WHO HAS CHOSEN THIS ITINERARY:
+- Destination: {itinerary_summary}
+- Budget: ₹{budget:,} total
+- Trip: {duration_days} days | {stop_count} stop(s)
+- Vibes: {vibe_tags}
+- Type: {itinerary_label}
+
+STOP DETAILS:
 {itinerary_stops_detail}
-- Transport modes: {transport_modes}
+
+LOGISTICS:
+- Transport: {transport_modes}
 - Days per stop: {days_per_stop}
-- Rejected destinations: {rejected_destinations}
-- Preferences: {user_preferences}
-- Conversation:
+- Not interested in: {rejected_destinations}
+- User preferences: {user_preferences}
+
+THE LAST USER MESSAGE WAS: "{last_user_message}"
+
+FULL CONVERSATION SO FAR:
 {conversation_history}
 
-Respond ONLY as JSON:
+ACTIONS YOU CAN TRIGGER:
+- "search_again": User wants completely different destinations
+- "reorder_stops": User wants stops in different order (params: new_order as list of destination names)  
+- "change_transport": Change how they travel (params: leg_index: int, mode: flight/train/bus/drive)
+- "adjust_days": Change days at a stop (params: stop_index: int, days: int)
+- "confirm_booking": User is ready to book
+
+RESPOND AS VALID JSON ONLY:
 {{
-  "message": "Your helpful response (may include suggestion of what action to take)",
+  "message": "A direct, specific answer to the user's LAST message — different from anything you said before",
   "action": "ask_question",
   "params": {{}},
   "updated_filters": {{
@@ -258,16 +269,18 @@ Respond ONLY as JSON:
 }}
 
 action must be exactly one of: "ask_question", "search_again", "reorder_stops", "change_transport", "adjust_days", "confirm_booking".
-params is only required for: reorder_stops (new_order: list[str]), change_transport (leg_index: int, mode: str), adjust_days (stop_index: int, days: int).
 """
 
 
 def generate_chat_response(session: dict) -> dict[str, Any]:
     """Generate the next chat response from Gemini for a conversation turn."""
     convo_lines = []
+    last_user_message = ""
     for msg in session.get("conversation_history", []):
         role = "Assistant" if msg["role"] == "assistant" else "User"
         convo_lines.append(f"{role}: {msg['content']}")
+        if msg["role"] == "user":
+            last_user_message = msg["content"]
     conversation_history = "\n".join(convo_lines) if convo_lines else "[No conversation yet]"
 
     rejected = session.get("rejected_destinations", [])
@@ -310,7 +323,6 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
         stop_count=stop_count,
         itinerary_summary=itinerary_summary,
         itinerary_label=session.get("itinerary_label", "Quick Escape"),
-        itinerary_type=session.get("itinerary_type", "1-stop"),
         duration_days=duration_days,
         itinerary_stops_detail=itinerary_stops_detail,
         transport_modes=str(transport_modes),
@@ -318,13 +330,19 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
         rejected_destinations=", ".join(rejected) if rejected else "None",
         user_preferences=", ".join(prefs) if prefs else "None specified yet",
         conversation_history=conversation_history,
+        last_user_message=last_user_message or "[No message yet — opening conversation]",
     )
 
     try:
         raw = _retry_gemini(prompt)
+        logger.info(f"Raw Gemini Output: {raw}")
         result = _extract_json(raw)
+        msg = result.get("message", "").strip()
+        if not msg:
+            msg = "I'm here! Could you tell me more about what vibe you're looking for?"
+            
         return {
-            "message": result.get("message", "I'd love to help you find the perfect destination! What's most important to you?"),
+            "message": msg,
             "action": result.get("action", "ask_question"),
             "params": result.get("params", {}),
             "updated_filters": result.get("updated_filters", {
@@ -334,9 +352,15 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
             }),
         }
     except Exception as e:
-        logger.warning(f"Gemini chat response failed: {e}")
+        
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            msg = "I'm receiving too many requests right now and hit my API rate limit! Please wait a minute and try asking again."
+        else:
+            msg = "I want to help find the perfect destination for you. Could you tell me what's most important — the landscape, the activities, or the overall vibe?"
+
         return {
-            "message": "I want to help find the perfect destination for you. Could you tell me what's most important — the landscape, the activities, or the overall vibe?",
+            "message": msg,
             "action": "ask_question",
             "params": {},
             "updated_filters": {"must_have": [], "must_not_have": [], "vibe_adjustment": ""},
