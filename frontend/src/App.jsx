@@ -3,7 +3,9 @@ import SearchInterface from './components/SearchInterface'
 import LoadingOverlay from './components/LoadingOverlay'
 import ResultsGrid from './components/ResultsGrid'
 import BookingModal from './components/BookingModal'
-import PlanView from './screens/PlanView'
+import ActivitySelector from './screens/ActivitySelector'
+import PackagePresentation from './screens/PackagePresentation'
+import PackageDetails from './screens/PackageDetails'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -47,6 +49,9 @@ export default function App() {
   // Plan / booking state
   const [selectedItinerary, setSelectedItinerary] = useState(null)
   const [bookingTarget, setBookingTarget] = useState(null)
+  const [generatedPackages, setGeneratedPackages] = useState(null)
+  const [selectedPackage, setSelectedPackage] = useState(null)
+  const [selectedActivities, setSelectedActivities] = useState({})
 
   // Persistent
   const [recentSearches, setRecentSearches] = useState([])
@@ -179,7 +184,7 @@ export default function App() {
   // ── Navigation helpers ────────────────────────────────────────────────────
   const handleSelectItinerary = (itinerary) => {
     setSelectedItinerary(itinerary)
-    setAppState('plan')
+    setAppState('activities')
   }
 
   const handlePlanBack = () => setAppState('results')
@@ -191,6 +196,8 @@ export default function App() {
   const handleBookingConfirmed = () => {
     setBookingTarget(null)
     setSelectedItinerary(null)
+    setGeneratedPackages(null)
+    setSelectedPackage(null)
     setResults([])
     setSessionId(null)
     setAppState('home')
@@ -212,8 +219,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-hero text-gray-900 font-sans overflow-x-hidden">
 
-      {/* Navbar — hidden in plan view (PlanView has its own top bar) */}
-      {appState !== 'plan' && (
+      {/* Navbar — hidden in activity flow which have their own top bars */}
+      {!['activities', 'packages', 'package_details'].includes(appState) && (
         <nav className="navbar-light w-full px-6 py-4 flex justify-between items-center sticky top-0 z-40">
           <button onClick={handleReset} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
@@ -285,8 +292,8 @@ export default function App() {
           />
         )}
 
-        {appState === 'plan' && selectedItinerary && (
-          <PlanView
+        {appState === 'activities' && selectedItinerary && (
+          <ActivitySelector
             itinerary={{
               ...selectedItinerary,
               conversation_opener: results.find(r => r === selectedItinerary)?.conversation_opener || undefined,
@@ -294,9 +301,37 @@ export default function App() {
             }}
             sessionId={sessionId}
             apiBase={API_BASE}
+            budget={budget}
             onBack={handlePlanBack}
+            onGenerate={(packages, selectedActs) => {
+              setGeneratedPackages(packages)
+              setSelectedActivities(selectedActs)
+              setAppState('packages')
+            }}
+          />
+        )}
+
+        {appState === 'packages' && generatedPackages && selectedItinerary && (
+          <PackagePresentation
+            packages={generatedPackages}
+            itinerary={selectedItinerary}
+            onBack={() => setAppState('activities')}
+            onSelect={(pkg) => {
+              setSelectedPackage(pkg)
+              setAppState('package_details')
+            }}
+          />
+        )}
+
+        {appState === 'package_details' && selectedPackage && selectedItinerary && (
+          <PackageDetails
+            pkg={selectedPackage}
+            itinerary={selectedItinerary}
+            initialSelectedActivities={selectedActivities}
+            sessionId={sessionId}
+            apiBase={API_BASE}
+            onBack={() => setAppState('packages')}
             onConfirm={handleConfirmBooking}
-            uploadedPhoto={imagePreview}
           />
         )}
 

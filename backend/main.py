@@ -36,6 +36,7 @@ from fake_tbo import (
     get_tbo_data,
     get_compatible_stops,
     get_region,
+    get_activities_for_destination,
 )
 from itinerary_engine import (
     BUDGET_SPLITS,
@@ -96,6 +97,12 @@ class SearchRequest(BaseModel):
 class ReorderRequest(BaseModel):
     session_id: str
     new_stop_order: List[str]  # list of destination names in desired order
+
+
+class GeneratePackagesRequest(BaseModel):
+    session_id: str
+    budget: int
+    selections: dict[str, List[str]]
 
 
 class UpdateLegRequest(BaseModel):
@@ -811,7 +818,86 @@ async def confirm_booking(request: ConfirmRequest):
     }
 
 
-# ─── Endpoint 8: GET /health (original) ──────────────────────────────────────
+# ─── Endpoint 8: POST /generate-packages (new) ───────────────────────────────
+
+@app.post("/generate-packages")
+async def generate_packages(request: GeneratePackagesRequest):
+    """
+    Takes user's selected activities across stops and generates 3 package tiers.
+    """
+    logger.info(f"POST /generate-packages | session={request.session_id}")
+    session = session_store.get_session(request.session_id)
+    validate_session_exists(session, request.session_id)
+    
+    stops = session.get("itinerary_stops", [])
+    if not stops:
+        raise HTTPException(status_code=400, detail="No itinerary found in session")
+
+    base_flight_total = 0
+    base_hotel_total = 0
+    activities_total = 0
+    
+    for stop in stops:
+        flight_cost = stop.get("flight_min_fare", 0)
+        base_flight_total += flight_cost
+        
+        hotel_cost = max(0, stop.get("price_per_person", 0) - flight_cost)
+        base_hotel_total += hotel_cost
+        
+        selected_act_ids = request.selections.get(stop["tbo_id"], [])
+        avail_acts = get_activities_for_destination(stop["tbo_id"])
+        
+        for act_id in selected_act_ids:
+            act = next((a for a in avail_acts if a["id"] == act_id), None)
+            if act:
+                activities_total += act["price"]
+
+    backpacker_hotel = int(base_hotel_total * 0.6)
+    balanced_hotel = base_hotel_total
+    premium_hotel = int(base_hotel_total * 1.8)
+    
+    packages = [
+        {
+            "id": "backpacker",
+            "tier": "The Backpacker",
+            "description": "Budget-conscious. Prioritizes activities with a simpler 2-3 star hotel stay.",
+            "flight_cost": base_flight_total,
+            "hotel_cost": backpacker_hotel,
+            "activities_cost": activities_total,
+            "total_price": base_flight_total + backpacker_hotel + activities_total,
+            "hotel_rating": "2-3 Stars",
+        },
+        {
+            "id": "balanced",
+            "tier": "The Balanced Explorer",
+            "description": "The golden mean. Standard 3-4 star accommodations with your full activity list.",
+            "flight_cost": base_flight_total,
+            "hotel_cost": balanced_hotel,
+            "activities_cost": activities_total,
+            "total_price": base_flight_total + balanced_hotel + activities_total,
+            "hotel_rating": "3-4 Stars",
+        },
+        {
+            "id": "premium",
+            "tier": "The Premium Leisure",
+            "description": "Luxury experience. Upgraded 4.5-5 star hotels. Includes all selected activities.",
+            "flight_cost": base_flight_total,
+            "hotel_cost": premium_hotel,
+            "activities_cost": activities_total,
+            "total_price": base_flight_total + premium_hotel + activities_total,
+            "hotel_rating": "4.5-5 Stars",
+        }
+    ]
+    
+    return {"packages": packages}
+
+
+@app.get("/activities/{tbo_id}")
+async def get_activities(tbo_id: str):
+    return {"activities": get_activities_for_destination(tbo_id)}
+
+
+# ─── Endpoint 9: GET /health (original) ──────────────────────────────────────
 
 @app.get("/health")
 async def health_check():

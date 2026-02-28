@@ -105,6 +105,74 @@ _REGION_STOP_ORDER: dict[str, list[str]] = {
     "Islands":            ["ANDAMAN_FAKE_002"],
 }
 
+ACTIVITIES_MAP: dict[str, list[dict]] = {
+    "JAIPUR_FAKE_012": [
+        {"id": "Ac_JAI_01", "name": "Amer Fort Guided Tour", "price": 1200, "duration": "Half Day"},
+        {"id": "Ac_JAI_02", "name": "Hot Air Balloon Safari", "price": 8500, "duration": "Early Morning"},
+        {"id": "Ac_JAI_03", "name": "Chokhi Dhani Cultural Evening", "price": 2500, "duration": "Evening"},
+        {"id": "Ac_JAI_04", "name": "City Palace & Jantar Mantar", "price": 1000, "duration": "Half Day"},
+        {"id": "Ac_JAI_05", "name": "Shopping in Johari Bazaar", "price": 500, "duration": "2-3 Hours"},
+    ],
+    "UDAIPUR_FAKE_022": [
+        {"id": "Ac_UDR_01", "name": "Lake Pichola Sunset Cruise", "price": 1500, "duration": "2 Hours"},
+        {"id": "Ac_UDR_02", "name": "City Palace Guided Tour", "price": 800, "duration": "Half Day"},
+        {"id": "Ac_UDR_03", "name": "Sajjangarh Monsoon Palace", "price": 600, "duration": "3 Hours"},
+        {"id": "Ac_UDR_04", "name": "Ambrai Ghat Evening Walk", "price": 300, "duration": "Evening"},
+        {"id": "Ac_UDR_05", "name": "Vintage Car Museum", "price": 500, "duration": "1 Hour"},
+    ],
+    "MYSORE_FAKE_015": [
+        {"id": "Ac_MYS_01", "name": "Mysore Palace Night Tour", "price": 1000, "duration": "Evening"},
+        {"id": "Ac_MYS_02", "name": "Chamundi Hill Climb", "price": 400, "duration": "Morning"},
+        {"id": "Ac_MYS_03", "name": "Silk Weaving Factory Visit", "price": 300, "duration": "2 Hours"},
+        {"id": "Ac_MYS_04", "name": "Brindavan Gardens Fountain Show", "price": 600, "duration": "Evening"},
+    ],
+    "KOVALAM_FAKE_003": [
+        {"id": "Ac_TRV_01", "name": "Lighthouse Beach Walk", "price": 200, "duration": "Evening"},
+        {"id": "Ac_TRV_02", "name": "Ayurvedic Spa Massage", "price": 4500, "duration": "Half Day"},
+        {"id": "Ac_TRV_03", "name": "Sree Padmanabhaswamy Temple", "price": 1000, "duration": "2 Hours"},
+        {"id": "Ac_TRV_04", "name": "Backwater Canoe Ride", "price": 2500, "duration": "Half Day"},
+    ],
+    "GOA_FAKE_001": [
+        {"id": "Ac_GOA_01", "name": "Dudhsagar Waterfalls Trek", "price": 3000, "duration": "Full Day"},
+        {"id": "Ac_GOA_02", "name": "Scuba Diving at Grand Island", "price": 4500, "duration": "Half Day"},
+        {"id": "Ac_GOA_03", "name": "Old Goa Churches Walk", "price": 800, "duration": "2 Hours"},
+        {"id": "Ac_GOA_04", "name": "Sunset Cruise on Mandovi", "price": 1200, "duration": "Evening"},
+        {"id": "Ac_GOA_05", "name": "Spice Plantation Tour", "price": 1500, "duration": "Half Day"},
+    ],
+    "ANDAMAN_FAKE_002": [
+        {"id": "Ac_IXZ_01", "name": "Havelock Scuba Diving", "price": 6000, "duration": "Half Day"},
+        {"id": "Ac_IXZ_02", "name": "Cellular Jail Sound & Light", "price": 800, "duration": "Evening"},
+        {"id": "Ac_IXZ_03", "name": "Ross Island Tour", "price": 1500, "duration": "Half Day"},
+        {"id": "Ac_IXZ_04", "name": "Sea Walk at North Bay", "price": 4000, "duration": "2 Hours"},
+    ],
+    "PONDICHERRY_FAKE_005": [
+        {"id": "Ac_PNY_01", "name": "Auroville Matrimandir Visit", "price": 500, "duration": "Half Day"},
+        {"id": "Ac_PNY_02", "name": "French Quarter Heritage Walk", "price": 800, "duration": "2 Hours"},
+        {"id": "Ac_PNY_03", "name": "Paradise Beach Ferry & Chill", "price": 1000, "duration": "Half Day"},
+        {"id": "Ac_PNY_04", "name": "Surfing Lesson at Serenity Beach", "price": 2500, "duration": "2 Hours"},
+    ],
+}
+
+
+def get_activities_for_destination(tbo_id: str) -> list[dict]:
+    dest = DESTINATION_MAP.get(tbo_id)
+    if not dest:
+        return []
+        
+    if tbo_id in ACTIVITIES_MAP:
+        return ACTIVITIES_MAP[tbo_id]
+        
+    # Generic fallback
+    name = dest["name"]
+    return [
+        {"id": f"Ac_{tbo_id}_01", "name": f"Highlights Tour of {name}", "price": 1500, "duration": "Half Day"},
+        {"id": f"Ac_{tbo_id}_02", "name": f"Local Cuisine Tasting", "price": 2000, "duration": "Evening"},
+        {"id": f"Ac_{tbo_id}_03", "name": f"Sunset Viewpoint Visit", "price": 800, "duration": "2 Hours"},
+        {"id": f"Ac_{tbo_id}_04", "name": f"Heritage Walk in {name}", "price": 1200, "duration": "Half Day"},
+        {"id": f"Ac_{tbo_id}_05", "name": f"Full Day Private Explorer", "price": 5000, "duration": "Full Day"},
+    ]
+
+
 
 def get_region(tbo_id: str) -> str:
     """Return the geographic region label for a destination TBO ID."""
