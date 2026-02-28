@@ -17,6 +17,7 @@ backend/chroma_store/
 
 # Generated files (regeneratable with scripts)
 backend/destination_embeddings.json
+backend/destination_embeddings2.json
 
 # Destination photos (regeneratable with download script)
 backend/destinations/
