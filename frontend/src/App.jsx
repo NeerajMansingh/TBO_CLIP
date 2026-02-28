@@ -4,6 +4,13 @@ import LoadingOverlay from './components/LoadingOverlay'
 import ResultsGrid from './components/ResultsGrid'
 import BookingModal from './components/BookingModal'
 import PlanView from './screens/PlanView'
+import ActivityDiscovery from './screens/ActivityDiscovery'
+import TravelStylePicker from './screens/TravelStylePicker'
+import ItineraryOptions from './screens/ItineraryOptions'
+import ItineraryEditor from './screens/ItineraryEditor'
+import { getActivitiesForDestination } from './data/activities'
+import { getFallbackHotel } from './data/fallbackHotels'
+import { getFlightData } from './data/fallbackFlights'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -25,7 +32,7 @@ const DESTINATION_POOL = [
 
 export default function App() {
   // ── App state machine ────────────────────────────────────────────────────
-  // 'home' | 'loading' | 'results' | 'plan' | 'confirm'
+  // 'home' | 'loading' | 'results' | 'activities' | 'style' | 'options' | 'editor' | 'plan' | 'confirm'
   const [appState, setAppState] = useState('home')
 
   // Search form parameters
@@ -47,6 +54,15 @@ export default function App() {
   // Plan / booking state
   const [selectedItinerary, setSelectedItinerary] = useState(null)
   const [bookingTarget, setBookingTarget] = useState(null)
+
+  // ── New wizard states ──────────────────────────────────────────────────
+  const [selectedDestination, setSelectedDestination] = useState(null)  // destination name string
+  const [destinationHotels, setDestinationHotels] = useState([])        // hotels array from results
+  const [destinationFlights, setDestinationFlights] = useState(null)     // flight object
+  const [selectedActivities, setSelectedActivities] = useState([])       // array of activity objects
+  const [travelStyle, setTravelStyle] = useState(null)                   // style object
+  const [generatedOptions, setGeneratedOptions] = useState([])           // 3 itinerary options
+  const [editorItinerary, setEditorItinerary] = useState(null)           // selected option for editor
 
   // Persistent
   const [recentSearches, setRecentSearches] = useState([])
@@ -178,8 +194,151 @@ export default function App() {
 
   // ── Navigation helpers ────────────────────────────────────────────────────
   const handleSelectItinerary = (itinerary) => {
-    setSelectedItinerary(itinerary)
-    setAppState('plan')
+    // Extract destination name from the first stop
+    const destName = itinerary?.stops?.[0]?.destination || ''
+    const hotels = itinerary?.stops?.[0]?.hotels || []
+    const flightFare = itinerary?.stops?.[0]?.flight_min_fare
+
+    // Check if we have hardcoded activities for this destination
+    const activityList = getActivitiesForDestination(destName)
+
+    if (activityList.length > 0) {
+      // Enter the new 4-step wizard
+      setSelectedItinerary(itinerary)
+      setSelectedDestination(destName)
+      setDestinationHotels(hotels)
+      setDestinationFlights(getFlightData(destName))
+      setAppState('activities')
+    } else {
+      // Fallback to old PlanView for destinations without activities
+      setSelectedItinerary(itinerary)
+      setAppState('plan')
+    }
+  }
+
+  // Step 1 → Step 2 : Activities selected → Pick travel style
+  const handleActivitiesComplete = (activities) => {
+    setSelectedActivities(activities)
+    setAppState('style')
+  }
+
+  // Step 2 → Step 3 : Travel style selected → Generate itinerary options
+  const handleStyleComplete = async (styleObj) => {
+    setTravelStyle(styleObj)
+    setAppState('loading')
+
+    // Determine the hotel to show based on travel style
+    const bestHotel = destinationHotels.length > 0
+      ? destinationHotels[0]
+      : getFallbackHotel(selectedDestination, styleObj.hotel_stars)
+
+    const hotelForApi = {
+      name: bestHotel.name,
+      stars: bestHotel.rating || bestHotel.stars || 3,
+      price_night: bestHotel.price_per_night || bestHotel.price_night || 3000,
+    }
+
+    const flightForApi = destinationFlights || getFlightData(selectedDestination)
+
+    try {
+      const res = await fetch(`${API_BASE}/itinerary/generate-from-activities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          selected_activity_ids: selectedActivities.map(a => a.id),
+          travel_style: styleObj.id,
+          destination: selectedDestination,
+          duration_days: durationDays,
+          budget,
+          hotel: hotelForApi,
+          flight: flightForApi,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        // Attach hotel and flight to each option
+        const opts = (data.options || []).map(opt => ({
+          ...opt,
+          hotel: hotelForApi,
+          flight: flightForApi,
+          days: opt.days || opt.days_count || durationDays,
+        }))
+        setGeneratedOptions(opts)
+        setAppState('options')
+        return
+      }
+    } catch (e) {
+      console.warn('Backend itinerary generation failed, using client-side fallback:', e)
+    }
+
+    // Client-side fallback if backend is not available
+    const allActivities = getActivitiesForDestination(selectedDestination)
+    const hotel = getFallbackHotel(selectedDestination, styleObj.hotel_stars)
+    const flight = getFlightData(selectedDestination)
+    const nights = Math.max(durationDays - 1, 1)
+    const hotelTotal = (hotel.price_night || 3000) * nights
+    const flightTotal = (flight.price || 6000) * 2
+
+    const buildFallbackOption = (id, label, tagline, pct, recommended) => {
+      const count = Math.max(2, Math.round(selectedActivities.length * pct))
+      const acts = selectedActivities.slice(0, count)
+      const actCost = acts.reduce((s, a) => s + a.cost, 0)
+      const hCost = Math.round(hotelTotal * (id === 'option_a' ? 0.8 : id === 'option_c' ? 1.3 : 1))
+      const total = hCost + flightTotal + actCost
+      const buffer = Math.round(total * 0.1)
+      const pool = allActivities.filter(a => !acts.find(s => s.id === a.id))
+
+      // Build day schedules
+      const days = []
+      let slotIdx = 0
+      for (let d = 1; d <= durationDays; d++) {
+        const slots = []
+        if (d === 1) {
+          slots.push({ id: `slot_${d}_0`, time: 'morning', locked: true, activity: { id: `_arrive_${d}`, name: 'Arrive & Check-in', emoji: '✈️', duration_hrs: 2, cost: 0, category: 'fixed', time_of_day: 'morning' } })
+          for (const time of ['afternoon', 'evening']) {
+            slots.push({ id: `slot_${d}_${slots.length}`, time, locked: false, activity: slotIdx < acts.length ? acts[slotIdx++] : null })
+          }
+        } else if (d === durationDays) {
+          slots.push({ id: `slot_${d}_0`, time: 'morning', locked: false, activity: slotIdx < acts.length ? acts[slotIdx++] : null })
+          slots.push({ id: `slot_${d}_depart`, time: 'afternoon', locked: true, activity: { id: `_depart_${d}`, name: 'Check-out & Departure', emoji: '🛫', duration_hrs: 2, cost: 0, category: 'fixed', time_of_day: 'afternoon' } })
+        } else {
+          for (const time of ['morning', 'afternoon', 'evening']) {
+            slots.push({ id: `slot_${d}_${slots.length}`, time, locked: false, activity: slotIdx < acts.length ? acts[slotIdx++] : null })
+          }
+        }
+        days.push({ day: d, label: d === 1 ? 'Arrival Day' : d === durationDays ? 'Departure Day' : `Day ${d}`, slots })
+      }
+
+      return {
+        id, label, tagline, days, days_count: durationDays, activities: acts, pool,
+        hotel_cost: hCost, flight_cost: flightTotal, activity_cost: actCost,
+        buffer, total_cost: total + buffer,
+        highlights: acts.slice(0, 4).map(a => a.name),
+        recommended,
+        hotel: { name: hotel.name, stars: hotel.stars, price_night: hotel.price_night },
+        flight,
+      }
+    }
+
+    setGeneratedOptions([
+      buildFallbackOption('option_a', 'Quick Escape', 'Relaxed pace, key highlights', 0.6, false),
+      buildFallbackOption('option_b', 'Best Balance', 'Perfectly paced, nothing missed', 0.8, true),
+      buildFallbackOption('option_c', 'Full Immersion', 'Every experience, packed in', 1.0, false),
+    ])
+    setAppState('options')
+  }
+
+  // Step 3 → Step 4 : Package selected → Open drag-and-drop editor
+  const handleOptionSelect = (option) => {
+    setEditorItinerary(option)
+    setAppState('editor')
+  }
+
+  // Step 4 → Booking
+  const handleEditorConfirm = () => {
+    setBookingTarget(editorItinerary || selectedItinerary)
   }
 
   const handlePlanBack = () => setAppState('results')
@@ -197,6 +356,13 @@ export default function App() {
     setImagePreview(null)
     setChatInput('')
     setSelectedVibes([])
+    setSelectedActivities([])
+    setTravelStyle(null)
+    setGeneratedOptions([])
+    setEditorItinerary(null)
+    setSelectedDestination(null)
+    setDestinationHotels([])
+    setDestinationFlights(null)
   }
 
   const handleReset = () => {
@@ -206,14 +372,19 @@ export default function App() {
     setImagePreview(null)
     setChatInput('')
     setSelectedVibes([])
+    setSelectedActivities([])
+    setTravelStyle(null)
+    setGeneratedOptions([])
+    setEditorItinerary(null)
+    setSelectedDestination(null)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-hero text-gray-900 font-sans overflow-x-hidden">
 
-      {/* Navbar — hidden in plan view (PlanView has its own top bar) */}
-      {appState !== 'plan' && (
+      {/* Navbar — hidden in views with their own header */}
+      {!['plan', 'activities', 'style', 'options', 'editor'].includes(appState) && (
         <nav className="navbar-light w-full px-6 py-4 flex justify-between items-center sticky top-0 z-40">
           <button onClick={handleReset} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
@@ -297,6 +468,53 @@ export default function App() {
             onBack={handlePlanBack}
             onConfirm={handleConfirmBooking}
             uploadedPhoto={imagePreview}
+          />
+        )}
+
+        {/* ── New 4-step wizard screens ─────────────────────────── */}
+
+        {appState === 'activities' && selectedDestination && (
+          <ActivityDiscovery
+            destination={selectedDestination}
+            duration={durationDays}
+            budget={budget}
+            vibes={vibeTagsFromSearch}
+            onComplete={handleActivitiesComplete}
+            onBack={() => setAppState('results')}
+          />
+        )}
+
+        {appState === 'style' && (
+          <TravelStylePicker
+            budget={budget}
+            destination={selectedDestination}
+            hotels={destinationHotels}
+            onComplete={handleStyleComplete}
+            onBack={() => setAppState('activities')}
+          />
+        )}
+
+        {appState === 'options' && (
+          <ItineraryOptions
+            options={generatedOptions}
+            destination={selectedDestination}
+            onSelect={handleOptionSelect}
+            onBack={() => setAppState('style')}
+            budget={budget}
+          />
+        )}
+
+        {appState === 'editor' && editorItinerary && (
+          <ItineraryEditor
+            itinerary={editorItinerary}
+            allActivities={getActivitiesForDestination(selectedDestination)}
+            budget={budget}
+            destination={selectedDestination}
+            hotel={editorItinerary.hotel}
+            flight={editorItinerary.flight}
+            onConfirm={handleEditorConfirm}
+            onBack={() => setAppState('options')}
+            duration={durationDays}
           />
         )}
 

@@ -1,0 +1,9 @@
+Collecting torch
+  Downloading torch-2.10.0-cp310-cp310-manylinux_2_28_x86_64.whl (915.6 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 915.6/915.6 MB 6.7 MB/s eta 0:00:00
+Collecting nvidia-cusolver-cu12==11.7.3.90
+  Downloading nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_x86_64.whl (267.5 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 267.5/267.5 MB 5.3 MB/s eta 0:00:00
+Collecting triton==3.6.0
+  Downloading triton-3.6.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (188.1 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸    171.3/188.1 MB 7.8 MB/s eta 0:00:03

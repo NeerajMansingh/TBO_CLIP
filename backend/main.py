@@ -527,6 +527,89 @@ async def text_search(request: SearchRequest):
     }
 
 
+# ─── Endpoint: POST /itinerary/generate-from-activities ────────────────────────
+
+class ActivityItineraryRequest(BaseModel):
+    session_id: Optional[str] = None
+    selected_activity_ids: List[str]
+    travel_style: str = "balanced"
+    destination: str
+    duration_days: int = 4
+    budget: int = 50000
+    hotel: Optional[dict] = None
+    flight: Optional[dict] = None
+
+
+@app.post("/itinerary/generate-from-activities")
+async def generate_itinerary_from_activities(req: ActivityItineraryRequest):
+    """
+    Generate 3 itinerary package options from user-selected activities.
+    """
+    from activity_data import get_activity_by_id, get_activities_for_destination
+    from itinerary_engine import activity_builder, STYLE_MULTIPLIERS
+
+    # Look up selected activities
+    selected = []
+    for aid in req.selected_activity_ids:
+        act = get_activity_by_id(aid)
+        if act:
+            selected.append(act)
+
+    if len(selected) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 activities required")
+
+    all_activities = get_activities_for_destination(req.destination)
+
+    # Calculate hotel and flight costs
+    style_mult = STYLE_MULTIPLIERS.get(req.travel_style, 1.0)
+    nights = max(req.duration_days - 1, 1)
+
+    # Use provided hotel/flight or estimate
+    if req.hotel and req.hotel.get("price_night"):
+        hotel_total = int(req.hotel["price_night"] * nights * style_mult)
+    elif req.hotel and req.hotel.get("price_per_night"):
+        hotel_total = int(req.hotel["price_per_night"] * nights * style_mult)
+    else:
+        hotel_total = int(3000 * nights * style_mult)
+
+    if req.flight and req.flight.get("price"):
+        flight_total = int(req.flight["price"] * 2)  # round trip
+    else:
+        flight_total = int(6000 * 2)
+
+    options = activity_builder.generate_options(
+        selected_activities=selected,
+        all_activities=all_activities,
+        duration_days=req.duration_days,
+        budget=req.budget,
+        travel_style=req.travel_style,
+        hotel_cost=hotel_total,
+        flight_cost=flight_total,
+    )
+
+    # Attach hotel/flight info to each option
+    for opt in options:
+        opt["hotel"] = req.hotel or {"name": "Standard Hotel", "stars": 3, "price_night": 3000}
+        opt["flight"] = req.flight or {"from": "DEL", "to": "???", "price": 6000, "airline": "IndiGo", "duration": "2h 00m"}
+        opt["days_count"] = req.duration_days
+
+    # Store in session if session_id provided
+    if req.session_id:
+        session = session_store.get_session(req.session_id)
+        if session:
+            session["selected_activities"] = req.selected_activity_ids
+            session["travel_style"] = req.travel_style
+            session["itinerary_options"] = options
+
+    return {
+        "options": options,
+        "destination": req.destination,
+        "budget": req.budget,
+        "duration_days": req.duration_days,
+        "travel_style": req.travel_style,
+    }
+
+
 # ─── Endpoint 3: GET /destinations (new — catalog for autocomplete) ───────────
 
 @app.get("/destinations")
