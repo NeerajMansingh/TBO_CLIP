@@ -16,7 +16,7 @@ venv/
 backend/chroma_store/
 
 # Generated files (regeneratable with scripts)
-backend/destination_embeddings.json
+
 backend/destination_embeddings2.json
 backend/destination_embeddings3.json
 backend/create_colab_notebook.py
