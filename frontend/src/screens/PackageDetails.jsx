@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
-const TIME_SLOTS = ["Morning", "Afternoon", "Evening"];
-
+// From kiran3rd: context-aware image selection based on activity name keywords
 const getImageForActivity = (act) => {
     const name = act.name.toLowerCase();
-    let keyword = "india"; // default
+    let keyword = "india";
 
     if (name.includes('food') || name.includes('tasting') || name.includes('cuisine') || name.includes('eat') || name.includes('dinner') || name.includes('market')) {
         keyword = "food,plating";
@@ -16,10 +16,8 @@ const getImageForActivity = (act) => {
         keyword = "temple,india";
     }
 
-    // Use a hash of the activity ID to consistently pick the same image from the category
     const idHash = (act.id || "1").split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const lockId = (idHash % 1000) + 1; // LoremFlickr lock needs a positive integer
-
+    const lockId = (idHash % 1000) + 1;
     return `https://loremflickr.com/800/600/${keyword}?lock=${lockId}`;
 };
 
@@ -30,7 +28,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
     const [currentPkg, setCurrentPkg] = useState(pkg);
     const [swapMenuOpen, setSwapMenuOpen] = useState(null); // { stopId, actId }
 
-    // Preferences state
     const [tripDays, setTripDays] = useState(
         itinerary.stops ? Math.max(3, itinerary.stops.length * 2 + 1) : 5
     );
@@ -41,6 +38,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         const fetchActivities = async () => {
             setLoading(true);
             const acts = {};
+            await new Promise(r => setTimeout(r, 400));
+
             for (const stop of itinerary.stops) {
                 try {
                     const res = await fetch(`${apiBase}/activities/${stop.tbo_id}`);
@@ -58,7 +57,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         fetchActivities();
     }, [itinerary, apiBase]);
 
-    // Build the day plan from selected activities
     const buildDayPlan = () => {
         const days = [];
         let globalDay = 1;
@@ -79,21 +77,21 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                 const events = [];
 
                 if (d === 1 && isFirst) {
-                    events.push({ type: "transit", label: "Arrival & Hotel Check-in", time: "Morning", icon: "🛬" });
+                    events.push({ type: "transit", label: "Arrival & Check-in", time: "Morning", icon: "🛬", description: "Private transfer to hotel included." });
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Evening", stopId: stop.tbo_id });
                 } else if (d === totalDays && isLast) {
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Morning", stopId: stop.tbo_id });
-                    events.push({ type: "transit", label: "Hotel Check-out & Departure", time: "Afternoon", icon: "🛫" });
+                    events.push({ type: "transit", label: "Departure", time: "Afternoon", icon: "🛫", description: "Transfer to airport." });
                 } else if (d === totalDays && !isLast) {
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Morning", stopId: stop.tbo_id });
-                    events.push({ type: "transit", label: `Travel to ${itinerary.stops[stopIdx + 1]?.destination || 'next city'}`, time: "Afternoon", icon: "🚆" });
+                    events.push({ type: "transit", label: `Transit to ${itinerary.stops[stopIdx + 1]?.destination || 'Next City'}`, time: "Afternoon", icon: "🚄", description: "Inter-city transfer." });
                 } else {
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Morning", stopId: stop.tbo_id });
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Evening", stopId: stop.tbo_id });
                 }
 
-                if (!events.some(e => e.type === "activity") && !events.some(e => e.label?.includes("Departure") || e.label?.includes("Travel"))) {
-                    events.push({ type: "leisure", label: "Free time — explore at your own pace", time: "Afternoon", icon: "🚶" });
+                if (!events.some(e => e.type === "activity") && !events.some(e => e.type === "transit")) {
+                    events.push({ type: "leisure", label: "Leisure & Exploration", time: "Flexible", icon: "✨", description: "Free time to explore local markets." });
                 }
 
                 days.push({ day: globalDay++, city: stop.destination, stopId: stop.tbo_id, events });
@@ -103,61 +101,35 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         return days;
     };
 
-    // Remove an activity from a stop
     const removeActivity = (stopId, actId) => {
         const act = (activitiesByStop[stopId] || []).find(a => a.id === actId);
         const price = act ? act.price : 0;
-
-        setSelectedActivities(prev => ({
-            ...prev,
-            [stopId]: (prev[stopId] || []).filter(id => id !== actId)
-        }));
-
-        setCurrentPkg(prev => ({
-            ...prev,
-            activities_cost: prev.activities_cost - price,
-            total_price: prev.total_price - price
-        }));
-
+        setSelectedActivities(prev => ({ ...prev, [stopId]: (prev[stopId] || []).filter(id => id !== actId) }));
+        setCurrentPkg(prev => ({ ...prev, activities_cost: prev.activities_cost - price, total_price: prev.total_price - price }));
         setSwapMenuOpen(null);
     };
 
-    // Swap an activity for another
     const swapActivity = (stopId, oldActId, newAct) => {
         const oldAct = (activitiesByStop[stopId] || []).find(a => a.id === oldActId);
         const priceDiff = newAct.price - (oldAct?.price || 0);
-
         setSelectedActivities(prev => {
             const stopActs = (prev[stopId] || []).filter(id => id !== oldActId);
             stopActs.push(newAct.id);
             return { ...prev, [stopId]: stopActs };
         });
-
-        setCurrentPkg(prev => ({
-            ...prev,
-            activities_cost: prev.activities_cost + priceDiff,
-            total_price: prev.total_price + priceDiff
-        }));
-
+        setCurrentPkg(prev => ({ ...prev, activities_cost: prev.activities_cost + priceDiff, total_price: prev.total_price + priceDiff }));
         setSwapMenuOpen(null);
     };
 
-    // Add an activity to a stop
     const addActivity = (stopId, act) => {
         setSelectedActivities(prev => {
             const current = prev[stopId] || [];
             if (current.includes(act.id)) return prev;
             return { ...prev, [stopId]: [...current, act.id] };
         });
-
-        setCurrentPkg(prev => ({
-            ...prev,
-            activities_cost: prev.activities_cost + act.price,
-            total_price: prev.total_price + act.price
-        }));
+        setCurrentPkg(prev => ({ ...prev, activities_cost: prev.activities_cost + act.price, total_price: prev.total_price + act.price }));
     };
 
-    // Get available (unselected) activities for all stops
     const getAvailableActivities = () => {
         const available = [];
         itinerary.stops.forEach(stop => {
@@ -178,97 +150,131 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-indigo-200 border-t-indigo-600"></div>
-                    <p className="text-sm font-medium text-indigo-900 tracking-wide uppercase">Assembling your journey...</p>
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="flex flex-col items-center gap-6">
+                    <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm font-bold text-slate-500 uppercase tracking-widest">
+                        Designing your experience...
+                    </motion.p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#F9FAFB] pb-32 font-sans text-gray-900 selection:bg-indigo-500/30">
+        <div className="relative min-h-screen bg-slate-100 text-slate-900 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
 
-            {/* Header */}
-            <nav className="fixed top-0 inset-x-0 z-50 bg-white/70 backdrop-blur-xl border-b border-gray-200/50 shadow-sm">
-                <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-                    <button onClick={onBack} className="group flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
-                        <span className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="fixed inset-0 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 z-0 pointer-events-none" />
+            <div className="fixed top-[-20%] right-[-10%] w-[800px] h-[800px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none z-0" />
+            <div className="fixed bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-rose-500/5 rounded-full blur-[100px] pointer-events-none z-0" />
+
+            {/* Navigation */}
+            <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-xl border-b border-white/50 shadow-sm transition-all duration-300">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                    <button onClick={onBack} className="group flex items-center gap-3 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors">
+                        <span className="w-10 h-10 rounded-full bg-slate-50 group-hover:bg-slate-200 flex items-center justify-center transition-colors border border-slate-200">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                             </svg>
                         </span>
-                        Back to Options
+                        <span>Adjust Preferences</span>
                     </button>
-                    <button
-                        onClick={onConfirm}
-                        className="bg-gray-900 text-white px-6 py-2.5 rounded-full font-bold hover:bg-black transition-all text-sm shadow-lg shadow-gray-900/20 flex items-center gap-2"
-                    >
-                        Confirm & Book
-                        <span className="bg-white/20 px-2 py-0.5 rounded text-xs">₹{currentPkg.total_price.toLocaleString()}</span>
-                    </button>
+
+                    <div className="flex items-center gap-6">
+                        <div className="hidden md:flex flex-col items-end mr-2">
+                            <span className="text-[10px] uppercase tracking-widest font-extrabold text-slate-400">Estimated Total</span>
+                            <span className="text-lg font-black text-slate-900">₹{currentPkg.total_price.toLocaleString()}</span>
+                        </div>
+                        <button
+                            onClick={onConfirm}
+                            className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-bold transition-all shadow-xl shadow-slate-900/20 hover:-translate-y-0.5 flex items-center gap-2"
+                        >
+                            Confirm Itinerary
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                        </button>
+                    </div>
                 </div>
             </nav>
 
-            <div className="max-w-7xl mx-auto pt-28 px-6">
+            <div className="max-w-7xl mx-auto pt-32 px-6 relative z-10">
 
-                {/* Title */}
-                <div className="max-w-2xl mb-12">
-                    <span className="text-indigo-500 text-xs font-bold uppercase tracking-widest mb-2 block">Interactive Itinerary</span>
-                    <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight leading-[1.1]">
-                        Your Complete <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600">Journey Map.</span>
+                {/* Hero Section */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="max-w-3xl mb-16"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider shadow-sm shadow-indigo-200">
+                            {tripDays} Days
+                        </span>
+                        <span className="bg-white border border-slate-200 text-slate-700 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider shadow-sm">
+                            {itinerary.stops.length} Cities
+                        </span>
+                    </div>
+                    <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-[1.1] mb-6 drop-shadow-sm">
+                        Your curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">journey map.</span>
                     </h1>
-                </div>
+                    <p className="text-lg text-slate-600 font-medium max-w-2xl leading-relaxed">
+                        We've organized your selected activities into a cohesive timeline. Review your daily flow, swap experiences, or add new discoveries below.
+                    </p>
+                </motion.div>
 
-                {/* Main 2-column layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
 
-                    {/* LEFT: Day-by-Day Plan */}
-                    <div className="lg:col-span-7">
-                        <div className="space-y-6">
+                    {/* LEFT COLUMN: Timeline */}
+                    <div className="lg:col-span-8">
+                        <div className="space-y-0 relative">
+                            <div className="absolute left-[27px] top-4 bottom-10 w-0.5 bg-slate-300 z-0"></div>
+
                             {dayPlan.map((dayInfo, dayIdx) => {
                                 const showCityHeader = dayIdx === 0 || dayPlan[dayIdx - 1]?.city !== dayInfo.city;
+                                const cityIndex = itinerary.stops.findIndex(s => s.tbo_id === dayInfo.stopId) + 1;
 
                                 return (
-                                    <div key={`day-${dayInfo.day}`}>
-                                        {/* City divider */}
+                                    <motion.div
+                                        key={`day-${dayInfo.day}`}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: dayIdx * 0.1 }}
+                                        className="relative z-10 pb-12"
+                                    >
                                         {showCityHeader && (
-                                            <div className="flex items-center gap-3 mb-4 mt-2">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-                                                    <span className="text-indigo-600 text-xs font-black">📍</span>
+                                            <div className="flex items-center gap-5 mb-8 -ml-1">
+                                                <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/20 flex items-center justify-center shrink-0 z-20 font-black text-xl border-4 border-slate-100 ring-1 ring-slate-900/5">
+                                                    {cityIndex.toString().padStart(2, '0')}
                                                 </div>
-                                                <h2 className="text-xl font-bold text-gray-900">{dayInfo.city}</h2>
-                                                <div className="flex-1 h-px bg-gray-200"></div>
+                                                <div>
+                                                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">{dayInfo.city}</h2>
+                                                    <p className="text-sm font-bold text-slate-500">Arrival & Exploration</p>
+                                                </div>
                                             </div>
                                         )}
 
-                                        {/* Day card */}
-                                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                                            {/* Day header */}
-                                            <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between">
-                                                <span className="text-xs font-black uppercase tracking-widest text-indigo-500">Day {dayInfo.day}</span>
-                                                <span className="text-xs text-gray-400 font-medium">{dayInfo.city}</span>
+                                        <div className="pl-[70px] relative">
+                                            <div className="absolute -left-[42px] top-0 flex flex-col items-center">
+                                                <div className="w-3.5 h-3.5 bg-indigo-600 rounded-full ring-4 ring-slate-100 shadow-sm"></div>
+                                                <span className="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400 -rotate-90 origin-center whitespace-nowrap w-20">Day {dayInfo.day}</span>
                                             </div>
 
-                                            {/* Events */}
-                                            <div className="divide-y divide-gray-100">
+                                            <div className="space-y-4">
                                                 {dayInfo.events.map((evt, eIdx) => {
                                                     if (evt.type === "transit" || evt.type === "leisure") {
                                                         return (
-                                                            <div key={`evt-${eIdx}`} className="px-5 py-4 flex items-center gap-4">
-                                                                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-lg shrink-0">
+                                                            <div key={`evt-${eIdx}`} className="bg-white/50 border border-slate-200/80 rounded-xl p-4 flex items-center gap-4 hover:bg-white hover:shadow-md transition-all duration-200">
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border ${evt.type === 'transit' ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
                                                                     {evt.icon}
                                                                 </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-semibold text-gray-700">{evt.label}</p>
-                                                                    <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mt-0.5">{evt.time}</p>
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-slate-800">{evt.label}</p>
+                                                                    <p className="text-xs font-medium text-slate-500">{evt.description}</p>
                                                                 </div>
                                                             </div>
                                                         );
                                                     }
 
-                                                    // Activity event
+                                                    // ACTIVITY CARD — uses getImageForActivity (kiran3rd) for context-aware images
                                                     const bgImg = getImageForActivity(evt);
                                                     const isSwapOpen = swapMenuOpen?.stopId === evt.stopId && swapMenuOpen?.actId === evt.id;
                                                     const alternatives = (activitiesByStop[evt.stopId] || []).filter(
@@ -276,306 +282,229 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                     );
 
                                                     return (
-                                                        <div key={evt.id}>
-                                                            <div className="px-5 py-4 flex items-start gap-4 group hover:bg-gray-50/50 transition-colors">
-                                                                {/* Time slot */}
-                                                                <div className="w-16 shrink-0 pt-1">
-                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                                        {evt.time}
-                                                                    </span>
-                                                                </div>
-
+                                                        <motion.div
+                                                            layout
+                                                            key={evt.id}
+                                                            className={`bg-white rounded-2xl border transition-all duration-300 overflow-hidden group shadow-sm hover:shadow-xl hover:shadow-slate-300/40 hover:border-indigo-300 ${isSwapOpen ? 'border-indigo-500 ring-4 ring-indigo-500/10 z-20' : 'border-slate-200'}`}
+                                                        >
+                                                            <div className="p-1.5 flex gap-5">
                                                                 {/* Image */}
-                                                                <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0">
-                                                                    <img src={bgImg} alt={evt.name} className="w-full h-full object-cover" />
+                                                                <div className="w-32 md:w-44 relative rounded-xl overflow-hidden shrink-0">
+                                                                    <img src={bgImg} alt={evt.name} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                                                    <div className="absolute top-2 left-2 bg-slate-900/90 text-white px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wide shadow-md border border-white/10 backdrop-blur-md">
+                                                                        {evt.time}
+                                                                    </div>
                                                                 </div>
 
-                                                                {/* Info */}
-                                                                <div className="flex-1 min-w-0">
-                                                                    <h4 className="text-sm font-bold text-gray-900 leading-snug">{evt.name}</h4>
-                                                                    <p className="text-xs text-gray-500 mt-1">
-                                                                        {evt.duration} • <span className="text-indigo-500 font-semibold">₹{evt.price?.toLocaleString()}</span>
-                                                                    </p>
-                                                                    {evt.description && (
-                                                                        <p className="text-xs text-gray-400 mt-1 line-clamp-1">{evt.description}</p>
-                                                                    )}
-                                                                </div>
+                                                                {/* Content */}
+                                                                <div className="py-2.5 pr-4 flex-1 flex flex-col justify-between min-h-[130px]">
+                                                                    <div>
+                                                                        <div className="flex justify-between items-start mb-1 gap-4">
+                                                                            <h4 className="text-base font-extrabold text-slate-900 leading-snug line-clamp-2">{evt.name}</h4>
+                                                                            <span className="text-sm font-black text-indigo-600 shrink-0 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">₹{evt.price?.toLocaleString()}</span>
+                                                                        </div>
+                                                                        <p className="text-xs font-bold text-slate-500 mb-2">{evt.duration} • Included</p>
+                                                                        {evt.description && <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-medium">{evt.description}</p>}
+                                                                    </div>
 
-                                                                {/* Action buttons — always visible */}
-                                                                <div className="flex items-center gap-1.5 shrink-0 mt-1">
-                                                                    {/* Replace button */}
-                                                                    {alternatives.length > 0 && (
+                                                                    {/* Actions */}
+                                                                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                                                                        {alternatives.length > 0 && (
+                                                                            <button
+                                                                                onClick={() => setSwapMenuOpen(isSwapOpen ? null : { stopId: evt.stopId, actId: evt.id })}
+                                                                                className={`text-xs font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors border ${isSwapOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                                                                            >
+                                                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                                                                Swap Activity
+                                                                            </button>
+                                                                        )}
+                                                                        {/* Remove button — from kiran4th (labeled, cleaner) */}
                                                                         <button
-                                                                            onClick={() => setSwapMenuOpen(isSwapOpen ? null : { stopId: evt.stopId, actId: evt.id })}
-                                                                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isSwapOpen
-                                                                                ? 'bg-indigo-100 text-indigo-600'
-                                                                                : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-500'
-                                                                                }`}
-                                                                            title="Replace activity"
+                                                                            onClick={() => removeActivity(evt.stopId, evt.id)}
+                                                                            className="text-xs font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-slate-500 border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors ml-auto"
                                                                         >
-                                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                                            </svg>
+                                                                            Remove
                                                                         </button>
-                                                                    )}
-                                                                    {/* Remove button */}
-                                                                    <button
-                                                                        onClick={() => removeActivity(evt.stopId, evt.id)}
-                                                                        className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all"
-                                                                        title="Remove activity"
-                                                                    >
-                                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                                                        </svg>
-                                                                    </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
-                                                            {/* Inline Replacement Panel */}
-                                                            {isSwapOpen && alternatives.length > 0 && (
-                                                                <div className="mx-5 mb-4 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden animate-[expand_0.3s_ease-out]">
-                                                                    <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
-                                                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Replace with</span>
-                                                                        <button onClick={() => setSwapMenuOpen(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                                                            </svg>
-                                                                        </button>
-                                                                    </div>
-                                                                    <div className="max-h-64 overflow-y-auto">
-                                                                        {alternatives.map((alt, altIdx) => {
-                                                                            const diff = alt.price - evt.price;
-                                                                            const altImg = getImageForActivity(alt);
-                                                                            return (
-                                                                                <button
-                                                                                    key={alt.id}
-                                                                                    onClick={() => swapActivity(evt.stopId, evt.id, alt)}
-                                                                                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white transition-colors border-b border-gray-100 last:border-b-0 group/alt"
-                                                                                >
-                                                                                    <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0">
-                                                                                        <img src={altImg} alt={alt.name} className="w-full h-full object-cover" />
-                                                                                    </div>
-                                                                                    <div className="flex-1 min-w-0">
-                                                                                        <p className="text-sm font-semibold text-gray-800 group-hover/alt:text-gray-900 leading-snug">{alt.name}</p>
-                                                                                        <p className="text-xs text-gray-400 mt-0.5">{alt.duration}</p>
-                                                                                        {alt.description && (
-                                                                                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{alt.description}</p>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <div className="text-right shrink-0">
-                                                                                        <span className="text-xs font-bold text-gray-700">₹{alt.price.toLocaleString()}</span>
-                                                                                        <span className={`block text-[10px] font-bold mt-0.5 ${diff > 0 ? 'text-orange-500' : diff < 0 ? 'text-emerald-500' : 'text-gray-400'
-                                                                                            }`}>
-                                                                                            {diff > 0 ? `+₹${diff.toLocaleString()}` : diff < 0 ? `-₹${Math.abs(diff).toLocaleString()}` : 'Same price'}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                            {/* Swap Drawer — animated, from kiran4th */}
+                                                            <AnimatePresence>
+                                                                {isSwapOpen && (
+                                                                    <motion.div
+                                                                        initial={{ height: 0, opacity: 0 }}
+                                                                        animate={{ height: "auto", opacity: 1 }}
+                                                                        exit={{ height: 0, opacity: 0 }}
+                                                                        className="bg-slate-50 border-t border-slate-200"
+                                                                    >
+                                                                        <div className="p-4">
+                                                                            <h5 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Available Alternatives</h5>
+                                                                            <div className="grid grid-cols-1 gap-2">
+                                                                                {alternatives.map((alt, altIdx) => {
+                                                                                    const diff = alt.price - evt.price;
+                                                                                    // Use getImageForActivity for contextual images in swap drawer too
+                                                                                    const altImg = getImageForActivity(alt);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={alt.id}
+                                                                                            onClick={() => swapActivity(evt.stopId, evt.id, alt)}
+                                                                                            className="flex items-center gap-3 p-2 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all text-left group/alt"
+                                                                                        >
+                                                                                            <img src={altImg} className="w-12 h-12 rounded-lg object-cover" alt="" />
+                                                                                            <div className="flex-1">
+                                                                                                <div className="flex justify-between">
+                                                                                                    <span className="text-sm font-bold text-slate-800 group-hover/alt:text-indigo-600">{alt.name}</span>
+                                                                                                    <span className={`text-xs font-bold ${diff > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                                                                        {diff > 0 ? `+₹${diff.toLocaleString()}` : diff < 0 ? `-₹${Math.abs(diff).toLocaleString()}` : 'Same Price'}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <span className="text-xs text-slate-500 line-clamp-1">{alt.description}</span>
+                                                                                            </div>
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
+                                                        </motion.div>
                                                     );
                                                 })}
                                             </div>
                                         </div>
-                                    </div>
+                                    </motion.div>
                                 );
                             })}
                         </div>
                     </div>
 
-                    {/* RIGHT: Sticky sidebar */}
-                    <div className="lg:col-span-5">
-                        <div className="sticky top-24 space-y-6">
+                    {/* RIGHT COLUMN: Sticky Sidebar */}
+                    <div className="lg:col-span-4">
+                        <div className="sticky top-28 space-y-6">
 
-                            {/* Cost Breakdown Card */}
-                            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                                <div className="mb-5">
-                                    <span className="bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
-                                        Calculated Trajectory
-                                    </span>
-                                    <h2 className="text-2xl font-black text-gray-900 mt-3">{currentPkg.tier}</h2>
-                                    <p className="text-gray-500 text-sm mt-1">{currentPkg.description}</p>
+                            {/* Stats Card */}
+                            <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 p-6 relative overflow-hidden ring-1 ring-slate-200/50">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-10 -mt-10"></div>
+
+                                <div className="relative z-10">
+                                    <h3 className="text-lg font-black text-slate-900 mb-6">Investment Breakdown</h3>
+
+                                    <div className="space-y-4 mb-8">
+                                        <div className="flex justify-between items-center pb-3 border-b border-slate-200/60">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm border border-blue-100">✈️</div>
+                                                <span className="text-sm font-bold text-slate-700">Transit</span>
+                                            </div>
+                                            <span className="font-bold text-slate-900">₹{currentPkg.flight_cost.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pb-3 border-b border-slate-200/60">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm border border-purple-100">🏨</div>
+                                                <span className="text-sm font-bold text-slate-700">Hotels</span>
+                                            </div>
+                                            <span className="font-bold text-slate-900">₹{currentPkg.hotel_cost.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pb-3 border-b border-slate-200/60">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm border border-emerald-100">🎟️</div>
+                                                <span className="text-sm font-bold text-slate-700">Activities ({allSelectedCount})</span>
+                                            </div>
+                                            <span className="font-bold text-emerald-700">₹{currentPkg.activities_cost.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-end mb-6">
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total per person</span>
+                                        <span className="text-3xl font-black text-slate-900">₹{currentPkg.total_price.toLocaleString()}</span>
+                                    </div>
+
+                                    <button onClick={onConfirm} className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-slate-900/10">
+                                        Proceed to Booking
+                                    </button>
                                 </div>
-
-                                <div className="space-y-3 mb-6">
-                                    <div className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-xl">
-                                        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                                            <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold text-gray-900">Transit & Flights</p>
-                                            <p className="text-xs text-blue-500">TBO Live PNRs</p>
-                                        </div>
-                                        <span className="font-bold text-gray-900 text-sm">₹{currentPkg.flight_cost.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-xl">
-                                        <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
-                                            <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1v1H9V7zm5 0h1v1h-1V7zm-5 4h1v1H9v-1zm5 0h1v1h-1v-1z" />
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold text-gray-900">Accommodations</p>
-                                            <p className="text-xs text-purple-500">{currentPkg.hotel_rating}</p>
-                                        </div>
-                                        <span className="font-bold text-gray-900 text-sm">₹{currentPkg.hotel_cost.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-xl">
-                                        <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                                            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold text-gray-900">Experiences</p>
-                                            <p className="text-xs text-emerald-500">{allSelectedCount} activities</p>
-                                        </div>
-                                        <span className="font-bold text-emerald-600 text-sm">₹{currentPkg.activities_cost.toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                {/* Total */}
-                                <div className="border-t border-gray-200 pt-4 flex justify-between items-end">
-                                    <div>
-                                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total per person</p>
-                                    </div>
-                                    <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 tracking-tight">
-                                        ₹{currentPkg.total_price.toLocaleString()}
-                                    </span>
-                                </div>
-
-                                <button
-                                    onClick={onConfirm}
-                                    className="w-full mt-5 bg-gray-900 text-white rounded-xl py-3.5 font-bold hover:bg-black transition-all shadow-lg shadow-gray-900/20 text-sm"
-                                >
-                                    Authorize & Generate Dossier
-                                </button>
                             </div>
 
-                            {/* Preferences Card */}
-                            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                                <h3 className="text-sm font-black uppercase tracking-wider text-gray-400 mb-4">Trip Preferences</h3>
-
+                            {/* Preferences Compact */}
+                            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200 p-6 shadow-sm">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Trip Settings</h4>
                                 <div className="space-y-4">
-                                    {/* Days */}
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Number of Days</label>
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={() => setTripDays(d => Math.max(2, d - 1))}
-                                                className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
-                                            >−</button>
-                                            <span className="text-xl font-black text-gray-900 w-8 text-center">{tripDays}</span>
-                                            <button
-                                                onClick={() => setTripDays(d => Math.min(14, d + 1))}
-                                                className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
-                                            >+</button>
-                                            <span className="text-xs text-gray-400 ml-1">days</span>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-bold text-slate-800">Duration</span>
+                                        <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1 border border-slate-200">
+                                            <button onClick={() => setTripDays(d => Math.max(2, d - 1))} className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm border border-slate-200 text-xs font-bold hover:text-indigo-600">-</button>
+                                            <span className="text-sm font-bold w-4 text-center text-slate-700">{tripDays}</span>
+                                            <button onClick={() => setTripDays(d => Math.min(14, d + 1))} className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm border border-slate-200 text-xs font-bold hover:text-indigo-600">+</button>
                                         </div>
                                     </div>
-
-                                    {/* Budget */}
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Budget</label>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-gray-400">₹</span>
-                                            <input
-                                                type="number"
-                                                value={tripBudget}
-                                                onChange={(e) => setTripBudget(Number(e.target.value))}
-                                                className="w-full bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Traveling With */}
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Traveling With</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {[
-                                                { value: "solo", label: "Solo", icon: "🧍" },
-                                                { value: "couple", label: "Couple", icon: "👫" },
-                                                { value: "friends", label: "Friends", icon: "👥" },
-                                                { value: "family", label: "Family", icon: "👨‍👩‍👧‍👦" },
-                                            ].map(opt => (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-bold text-slate-800">Group Type</span>
+                                        <div className="flex gap-1">
+                                            {['couple', 'family'].map(t => (
                                                 <button
-                                                    key={opt.value}
-                                                    onClick={() => setTravelWith(opt.value)}
-                                                    className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${travelWith === opt.value
-                                                        ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-300'
-                                                        : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
-                                                        }`}
+                                                    key={t}
+                                                    onClick={() => setTravelWith(t)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${travelWith === t ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
                                                 >
-                                                    <span>{opt.icon}</span>
-                                                    {opt.label}
+                                                    {t === 'couple' ? 'Couple' : 'Family'}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
 
-                {/* BOTTOM: Available Activities Pool */}
-                {availableActivities.length > 0 && (
-                    <div className="mt-12">
-                        <div className="flex items-center gap-3 mb-6">
-                            <h2 className="text-xl font-black text-gray-900">Available Experiences</h2>
-                            <span className="bg-gray-200 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-full">{availableActivities.length}</span>
-                            <div className="flex-1 h-px bg-gray-200"></div>
+                {/* BOTTOM: Discovery Deck — kiran4th layout (4-column grid with hover overlay) */}
+                <div className="mt-20 border-t border-slate-200/60 pt-12 mb-20 relative z-10">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                        <div>
+                            <h2 className="text-3xl font-black text-slate-900">Curate More Memories</h2>
+                            <p className="text-slate-600 font-medium mt-2">Tap any experience below to instantly add it to your itinerary.</p>
                         </div>
-                        <p className="text-sm text-gray-500 mb-6 -mt-3">Click any activity to add it to your plan. Cost and itinerary update automatically.</p>
+                        <span className="bg-white border border-slate-200 text-slate-700 font-bold px-4 py-2 rounded-full text-sm self-start shadow-sm">
+                            {availableActivities.length} Available Experiences
+                        </span>
+                    </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {availableActivities.map((act) => {
-                                const bgImg = getImageForActivity(act);
-
-                                return (
-                                    <div
-                                        key={act.id}
-                                        onClick={() => addActivity(act.stopId, act)}
-                                        className="group flex rounded-xl overflow-hidden cursor-pointer transition-all duration-300 bg-white border border-gray-200 hover:border-indigo-300 hover:shadow-md"
-                                    >
-                                        {/* Image */}
-                                        <div className="relative w-28 shrink-0 overflow-hidden">
-                                            <img src={bgImg} alt={act.name} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {availableActivities.map((act) => {
+                            // Use getImageForActivity for contextual images in discovery deck too
+                            const bgImg = getImageForActivity(act);
+                            return (
+                                <motion.div
+                                    key={act.id}
+                                    whileHover={{ y: -8 }}
+                                    onClick={() => addActivity(act.stopId, act)}
+                                    className="group cursor-pointer bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300"
+                                >
+                                    <div className="h-40 relative overflow-hidden">
+                                        <img src={bgImg} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 to-transparent opacity-70 group-hover:opacity-50 transition-opacity"></div>
+                                        <div className="absolute bottom-3 left-3 text-white">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md px-2 py-0.5 rounded mb-1 inline-block border border-white/10">{act.city}</span>
+                                            <p className="text-lg font-bold">₹{act.price.toLocaleString()}</p>
                                         </div>
-
-                                        {/* Content */}
-                                        <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">{act.city} • {act.duration}</span>
-                                                    <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full">₹{act.price.toLocaleString()}</span>
-                                                </div>
-                                                <h4 className="text-sm font-bold text-gray-900 leading-snug">{act.name}</h4>
-                                                {act.description && (
-                                                    <p className="text-xs text-gray-400 mt-1 line-clamp-1">{act.description}</p>
-                                                )}
-                                            </div>
-                                            <div className="mt-2 flex items-center gap-1 text-xs font-medium text-indigo-500 group-hover:text-indigo-600">
-                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                                                </svg>
-                                                Add to plan
-                                            </div>
+                                        <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
+                                            <span className="bg-white text-indigo-900 font-bold px-4 py-2 rounded-full transform scale-90 group-hover:scale-100 transition-transform shadow-lg">
+                                                + Add to Trip
+                                            </span>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div className="p-4">
+                                        <h4 className="font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">{act.name}</h4>
+                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{act.description || "An amazing experience awaiting you."}</p>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
                     </div>
-                )}
+                </div>
+
             </div>
         </div>
     );
