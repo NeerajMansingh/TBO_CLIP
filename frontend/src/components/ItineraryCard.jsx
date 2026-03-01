@@ -1,11 +1,29 @@
 import React from 'react';
 import { MapPin, ArrowRight, Plane, Train, Bus } from 'lucide-react';
 
+const API_BASE = 'http://localhost:8000';
+
 const TRANSPORT_ICONS = {
     flight: <Plane size={12} />,
     train: <Train size={12} />,
     bus: <Bus size={12} />,
 };
+
+// Derive local image URL from destination name (matches backend /destinations/<slug>/1.jpg)
+function getLocalImageUrl(destinationName) {
+    if (!destinationName) return null;
+    const slug = destinationName
+        .toLowerCase()
+        .replace(/[^a-z0-9\s_-]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/-/g, '_')
+        .replace('andaman_islands', 'andaman')
+        .replace('leh_ladakh', 'leh')
+        .replace('kerala_hill_stations', 'kerala_hills')
+        .replace('spiti_valley', 'spiti')
+        .replace('ziro_valley', 'ziro');
+    return `${API_BASE}/destinations/${slug}/1.jpg`;
+}
 
 function RouteConnector({ transport = 'flight' }) {
     return (
@@ -19,6 +37,7 @@ function RouteConnector({ transport = 'flight' }) {
 
 export default function ItineraryCard({ itinerary, onSelect, travelMonth, originCity, index }) {
     const { type, label, stops, total_price, region, stop_count } = itinerary;
+    const [imgError, setImgError] = React.useState(false);
 
     const typeColors = {
         '1-stop': 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -26,17 +45,24 @@ export default function ItineraryCard({ itinerary, onSelect, travelMonth, origin
         '3-stop': 'bg-violet-50 text-violet-700 border-violet-200',
     };
 
-    const primaryPhoto = stops[0]?.photo;
-    const heroUrl = primaryPhoto?.startsWith('http')
-        ? primaryPhoto
-        : primaryPhoto ? `http://localhost:8000/${primaryPhoto}` : null;
+    // Prefer local image file first; fall back to backend-returned photo URL
+    const primaryPhotoLocal = getLocalImageUrl(stops[0]?.destination);
+    const primaryPhotoRemote = stops[0]?.photo?.startsWith('http')
+        ? stops[0].photo
+        : stops[0]?.photo ? `${API_BASE}/${stops[0].photo}` : null;
+    const heroUrl = !imgError && primaryPhotoLocal ? primaryPhotoLocal : primaryPhotoRemote;
 
     return (
         <div className="card-light overflow-hidden flex flex-col animate-slide-up" style={{ animationDelay: `${index * 80}ms` }}>
             {/* Hero image with stop photos */}
             <div className="relative h-48 overflow-hidden">
                 {heroUrl
-                    ? <img src={heroUrl} alt={stops[0]?.destination} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ? <img
+                        src={heroUrl}
+                        alt={stops[0]?.destination}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        onError={() => setImgError(true)}
+                    />
                     : <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
                         <MapPin size={40} className="text-blue-300" />
                     </div>
@@ -96,13 +122,19 @@ export default function ItineraryCard({ itinerary, onSelect, travelMonth, origin
                 {stops.length > 1 && (
                     <div className="flex gap-2">
                         {stops.slice(1).map((stop, i) => {
-                            const url = stop.photo?.startsWith('http') ? stop.photo : stop.photo ? `http://localhost:8000/${stop.photo}` : null;
+                            const localUrl = getLocalImageUrl(stop.destination);
+                            const remoteUrl = stop.photo?.startsWith('http') ? stop.photo : stop.photo ? `${API_BASE}/${stop.photo}` : null;
                             return (
                                 <div key={i} className="flex-1 rounded-lg overflow-hidden h-14 bg-gray-100 relative">
-                                    {url
-                                        ? <img src={url} alt={stop.destination} className="w-full h-full object-cover" />
-                                        : <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center text-xs text-gray-400 font-medium">{stop.destination[0]}</div>
-                                    }
+                                    <img
+                                        src={localUrl || remoteUrl}
+                                        alt={stop.destination}
+                                        className="w-full h-full object-cover"
+                                        onError={e => {
+                                            if (e.target.src !== remoteUrl && remoteUrl) e.target.src = remoteUrl;
+                                            else e.target.style.display = 'none';
+                                        }}
+                                    />
                                     <div className="absolute inset-0 bg-black/30 flex items-end p-1">
                                         <span className="text-white text-[9px] font-bold">{stop.destination}</span>
                                     </div>
@@ -140,7 +172,7 @@ export default function ItineraryCard({ itinerary, onSelect, travelMonth, origin
                         onClick={() => onSelect(itinerary)}
                         className="btn-primary px-5 py-2.5 text-sm"
                     >
-                        Plan this <ArrowRight size={14} />
+                        Explore <ArrowRight size={14} />
                     </button>
                 </div>
             </div>

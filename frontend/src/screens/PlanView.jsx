@@ -12,16 +12,72 @@ const TRANSPORT_OPTIONS = [
 ];
 
 // ── Individual stop card (draggable) ─────────────────────────────────────────
-function StopCard({ stop, index, total, transport, days, onTransportChange, onDaysChange, isDragging, onDragStart, onDragEnd, onDragOver, onDrop }) {
+function StopCard({ stop, index, total, transport, days, onTransportChange, onDaysChange, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, onCostUpdate }) {
     const [expanded, setExpanded] = useState(index === 0);
+    const isNearby = !!stop.is_nearby;
 
-    const photoUrl = stop.photo
+    // Resolve photo: prefer local destinations file, then backend path, then null
+    const localSlug = stop.destination
+        ? stop.destination.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_')
+        : null;
+    const localPhoto = localSlug ? `${API_BASE}/destinations/${localSlug}/1.jpg` : null;
+    const remotePhoto = stop.photo
         ? (stop.photo.startsWith('http') ? stop.photo : `${API_BASE}/${stop.photo}`)
         : null;
+    const [photoErr, setPhotoErr] = useState(false);
+    const photoUrl = !photoErr && localPhoto ? localPhoto : remotePhoto;
 
-    const isMock = stop.hotels?.some(h => h.name?.includes('(Fallback)')) || false;
-    const flightCost = stop.flight_min_fare || Math.round((stop.price_per_person || 0) * 0.35);
-    const hotelCost = Math.max(0, (stop.price_per_person || 0) - flightCost);
+    const isMock = false; // Mock data has been removed — no more mock badges
+
+    const [liveDetails, setLiveDetails] = useState({ hotels: stop.hotels || [], flights: stop.flights || [], initialized: false });
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [selectedHotelIndex, setSelectedHotelIndex] = useState(0);
+    const [selectedFlightIndex, setSelectedFlightIndex] = useState(0);
+
+    React.useEffect(() => {
+        if (!isNearby && !liveDetails.initialized) {
+            setLoadingDetails(true);
+            fetch(`${API_BASE}/tbo_details?tbo_id=${stop.tbo_id}&budget=${stop.price_per_person || 100000}`)
+                .then(res => res.json())
+                .then(data => {
+                    setLiveDetails({ hotels: data.hotels || [], flights: data.flights || [], initialized: true });
+                    setLoadingDetails(false);
+                })
+                .catch(() => {
+                    setLiveDetails({ hotels: [], flights: [], initialized: true });
+                    setLoadingDetails(false);
+                });
+        }
+    }, [stop.tbo_id, isNearby, stop.price_per_person, liveDetails.initialized]);
+
+    // Clamp selection indices to valid range after data loads
+    const safeFlightIdx = Math.min(selectedFlightIndex, Math.max(0, liveDetails.flights.length - 1));
+    const safeHotelIdx = Math.min(selectedHotelIndex, Math.max(0, liveDetails.hotels.length - 1));
+
+    const selectedFlight = liveDetails.flights.length > 0 ? liveDetails.flights[safeFlightIdx] : null;
+    const selectedHotel = liveDetails.hotels.length > 0 ? liveDetails.hotels[safeHotelIdx] : null;
+
+    // Only compute real costs when TBO data is available.
+    // If not loaded yet (loadingDetails) -> undefined (show spinner). If loaded but empty -> null (show N/A).
+    const hasData = liveDetails.initialized;
+    const flightCost = hasData && selectedFlight ? Number(selectedFlight.fare) : null;
+    const hotelCost = hasData && selectedHotel ? Math.round(Number(selectedHotel.price_per_night) * (days || 2)) : null;
+    const stopTotal = (flightCost !== null && hotelCost !== null) ? flightCost + hotelCost : null;
+
+    React.useEffect(() => {
+        // Only propagate real cost — propagate 0 when no data so global total isn't inflated
+        if (onCostUpdate) onCostUpdate(index, stopTotal ?? 0);
+    }, [index, stopTotal, onCostUpdate]);
+
+    // Estimate travel TIME for ground transport (rough: 50km/h avg for bus/drive, 80km/h for train)
+    // distance_km is available on nearby stops; for primary stops we don't have it, so skip the estimate
+    const distKm = stop.distance_km || null;
+    function travelTimeLabel(mode) {
+        if (!distKm) return '';
+        const hours = mode === 'train' ? distKm / 80 : distKm / 50;
+        if (hours < 1) return ` (~${Math.round(hours * 60)}min)`;
+        return ` (~${hours.toFixed(1)}h)`;
+    }
 
     return (
         <div
@@ -52,13 +108,30 @@ function StopCard({ stop, index, total, transport, days, onTransportChange, onDa
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                         <h4 className="font-bold text-gray-900 text-sm truncate">{stop.destination}</h4>
+                        {isNearby && (
+                            <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                📍 Nearby
+                            </span>
+                        )}
                         {isMock && <span className="mock-badge">Mock</span>}
                     </div>
-                    <p className="text-xs text-gray-500 truncate">{stop.tagline || 'India'}</p>
+                    <p className="text-xs text-gray-500 truncate">{stop.tagline || (isNearby ? stop.category : 'India')}</p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-none">
-                    <span className="text-sm font-bold text-gray-900">₹{(stop.price_per_person || 0).toLocaleString('en-IN')}</span>
+                    {!isNearby && (
+                        <span className="text-sm font-bold text-gray-900">
+                            {loadingDetails
+                                ? <span className="text-xs text-gray-400 animate-pulse">Fetching…</span>
+                                : stopTotal !== null
+                                    ? `₹${stopTotal.toLocaleString('en-IN')}`
+                                    : <span className="text-xs text-gray-400">Price TBD</span>
+                            }
+                        </span>
+                    )}
+                    {isNearby && stop.distance_km && (
+                        <span className="text-xs text-gray-500">{stop.distance_km}km away</span>
+                    )}
                     <button onClick={() => setExpanded(e => !e)} className="text-gray-400 hover:text-gray-700 transition-colors">
                         {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
@@ -68,41 +141,71 @@ function StopCard({ stop, index, total, transport, days, onTransportChange, onDa
             {/* Expanded details */}
             {expanded && (
                 <div className="p-4 space-y-4 bg-gray-50/50 animate-slide-up">
-                    {/* Cost breakdown */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-white rounded-xl p-2 border border-gray-100">
-                            <p className="text-[10px] text-gray-400 mb-0.5">Flight</p>
-                            <p className="text-sm font-bold text-gray-800">₹{flightCost.toLocaleString('en-IN')}</p>
+                    {/* Nearby place: show visit info instead of cost breakdown */}
+                    {isNearby ? (
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex items-center gap-3">
+                            <span className="text-2xl">📍</span>
+                            <div>
+                                <p className="text-xs font-bold text-emerald-700">Nearby Day Trip</p>
+                                <p className="text-xs text-gray-600 mt-0.5">{stop.tagline}</p>
+                                {stop.visit_duration && (
+                                    <p className="text-[11px] text-emerald-600 mt-1 font-semibold">⏱ Suggested: {stop.visit_duration}</p>
+                                )}
+                            </div>
                         </div>
-                        <div className="bg-white rounded-xl p-2 border border-gray-100">
-                            <p className="text-[10px] text-gray-400 mb-0.5">Hotel</p>
-                            <p className="text-sm font-bold text-gray-800">₹{hotelCost.toLocaleString('en-IN')}</p>
+                    ) : (
+                        /* Cost breakdown — only show when real data available */
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-white rounded-xl p-2 border border-gray-100">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Flight</p>
+                                <p className="text-sm font-bold text-gray-800">
+                                    {loadingDetails ? '…' : flightCost !== null ? `₹${flightCost.toLocaleString('en-IN')}` : 'N/A'}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-xl p-2 border border-gray-100">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Hotel ({days || 2}n)</p>
+                                <p className="text-sm font-bold text-gray-800">
+                                    {loadingDetails ? '…' : hotelCost !== null ? `₹${hotelCost.toLocaleString('en-IN')}` : 'N/A'}
+                                </p>
+                            </div>
+                            <div className="bg-blue-50 rounded-xl p-2 border border-blue-100">
+                                <p className="text-[10px] text-blue-600 mb-0.5">Total</p>
+                                <p className="text-sm font-bold text-blue-700">
+                                    {loadingDetails ? '…' : stopTotal !== null ? `₹${stopTotal.toLocaleString('en-IN')}` : 'TBD'}
+                                </p>
+                            </div>
                         </div>
-                        <div className="bg-blue-50 rounded-xl p-2 border border-blue-100">
-                            <p className="text-[10px] text-blue-600 mb-0.5">Total</p>
-                            <p className="text-sm font-bold text-blue-700">₹{(stop.price_per_person || 0).toLocaleString('en-IN')}</p>
-                        </div>
-                    </div>
+                    )}
 
-                    {/* Transport selector */}
-                    <div>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Travel Mode to Next Stop</p>
-                        <div className="flex gap-2">
-                            {TRANSPORT_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.value}
-                                    onClick={() => onTransportChange(index, opt.value)}
-                                    className={`flex-1 py-2 rounded-lg border text-xs font-semibold transition-all ${transport === opt.value
-                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                                        }`}
-                                    disabled={index === total - 1}
-                                >
-                                    {opt.icon} {opt.label}
-                                </button>
-                            ))}
+                    {/* Transport selector — with travel time hints for ground modes */}
+                    {!isNearby && index < total - 1 && (
+                        <div>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Travel Mode to Next Stop</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                                {TRANSPORT_OPTIONS.map(opt => {
+                                    const timeHint = (opt.value !== 'flight') ? travelTimeLabel(opt.value) : '';
+                                    const isSelected = transport === opt.value;
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => onTransportChange(index, opt.value)}
+                                            className={`py-2 px-1 rounded-lg border text-xs font-semibold transition-all text-center ${isSelected
+                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                                }`}
+                                        >
+                                            <div>{opt.icon} {opt.label}</div>
+                                            {timeHint && (
+                                                <div className={`text-[9px] mt-0.5 font-normal ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
+                                                    {timeHint}
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Days stepper */}
                     <div className="flex items-center justify-between">
@@ -142,27 +245,80 @@ function StopCard({ stop, index, total, transport, days, onTransportChange, onDa
                         </div>
                     )}
 
-                    {/* Hotels */}
-                    {stop.hotels && stop.hotels.length > 0 && (
-                        <div>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Hotel Options</p>
-                            <div className="space-y-2">
-                                {stop.hotels.slice(0, 2).map((hotel, i) => (
-                                    <div key={i} className="bg-white rounded-xl p-3 border border-gray-100 flex items-center gap-3">
-                                        {hotel.photo && (
-                                            <img src={hotel.photo} alt={hotel.name} className="w-12 h-10 rounded-lg object-cover flex-none" onError={e => e.target.style.display = 'none'} />
-                                        )}
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold text-gray-800 truncate">{hotel.name}</p>
-                                            <div className="flex items-center gap-1 mt-0.5">
-                                                <Star size={10} className="text-amber-400 fill-amber-400" />
-                                                <span className="text-[10px] text-gray-500">{hotel.rating}</span>
-                                                <span className="text-[10px] text-gray-400">• ₹{(hotel.price_per_night || 0).toLocaleString('en-IN')}/night</span>
+                    {/* Flight & Hotels — live TBO data */}
+                    {!isNearby && (
+                        <div className="space-y-4">
+                            {loadingDetails ? (
+                                <div className="text-center py-4 text-xs text-gray-500 animate-pulse">
+                                    Fetching live flights and hotels...
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Flights */}
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Flight Options (From Origin)</p>
+                                        {liveDetails.flights.length > 0 ? (
+                                            <div className="space-y-2 max-h-40 overflow-y-auto pr-1 stylish-scrollbar">
+                                                {liveDetails.flights.map((flight, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setSelectedFlightIndex(i)}
+                                                        className={`bg-white rounded-xl p-3 border cursor-pointer transition-all flex items-center justify-between ${safeFlightIdx === i ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/30' : 'border-gray-200 hover:border-blue-300'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Plane size={14} className={safeFlightIdx === i ? "text-blue-500" : "text-gray-400"} />
+                                                            <p className="text-xs font-bold text-gray-800">{flight.airline}</p>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-gray-900">₹{Number(flight.fare).toLocaleString('en-IN')}</p>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        </div>
+                                        ) : (
+                                            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500 border border-gray-100 flex items-center gap-2">
+                                                <Plane size={13} className="text-gray-400" /> No flights available from this origin.
+                                            </div>
+                                        )}
                                     </div>
-                                ))}
-                            </div>
+
+                                    {/* Hotels */}
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Hotel Options</p>
+                                        {liveDetails.hotels.length > 0 ? (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1 stylish-scrollbar">
+                                                {liveDetails.hotels.map((hotel, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setSelectedHotelIndex(i)}
+                                                        className={`bg-white rounded-xl p-3 border cursor-pointer transition-all flex items-center gap-3 ${safeHotelIdx === i ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/30' : 'border-gray-200 hover:border-blue-300'}`}
+                                                    >
+                                                        {hotel.photo && (
+                                                            <img src={hotel.photo} alt={hotel.name} className="w-12 h-12 rounded-lg object-cover flex-none" onError={e => e.target.style.display = 'none'} />
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-bold text-gray-800 truncate">{hotel.name}</p>
+                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                <Star size={10} className="text-amber-400 fill-amber-400" />
+                                                                <span className="text-[10px] font-semibold text-gray-700">{hotel.rating} Stars</span>
+                                                                <span className="text-[10px] text-gray-400 ml-1">• ₹{(Number(hotel.price_per_night) || 0).toLocaleString('en-IN')}/night</span>
+                                                                <span className="text-[10px] text-gray-500 ml-1">× {days || 2}d = ₹{Math.round((Number(hotel.price_per_night) || 0) * (days || 2)).toLocaleString('en-IN')}</span>
+                                                            </div>
+                                                        </div>
+                                                        {safeHotelIdx === i && (
+                                                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-none">
+                                                                <svg width="12" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5L5 9L13 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500 border border-gray-100 flex items-center gap-2">
+                                                🏨 Hotels not available for this destination at the moment.
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
@@ -175,7 +331,25 @@ function StopCard({ stop, index, total, transport, days, onTransportChange, onDa
 // ── Main PlanView ─────────────────────────────────────────────────────────────
 export default function PlanView({ itinerary, sessionId, apiBase = API_BASE, onBack, onConfirm, uploadedPhoto }) {
     const [stops, setStops] = useState(itinerary.stops || []);
-    const [totalPrice, setTotalPrice] = useState(itinerary.total_price || 0);
+    const [stopTotals, setStopTotals] = useState({});
+    const baseTotalPrice = itinerary.total_price || 0;
+
+    // Compute derived total price based on selected hotels/flights.
+    // stopTotals[i] = 0 means no real TBO data yet (StopCard propagates 0 when null).
+    // Only show a real total when at least one stop has real data.
+    const totalPrice = React.useMemo(() => {
+        const realTotals = Object.values(stopTotals).filter(v => v > 0);
+        if (realTotals.length === 0) return null; // nothing loaded yet
+        return realTotals.reduce((a, b) => a + b, 0);
+    }, [stopTotals]);
+
+    const handleCostUpdate = useCallback((index, stopTotal) => {
+        setStopTotals(prev => {
+            if (prev[index] === stopTotal) return prev;
+            return { ...prev, [index]: stopTotal };
+        });
+    }, []);
+
     const [messages, setMessages] = useState([]);
     const [isTyping, setIsTyping] = useState(false);
     const [transportModes, setTransportModes] = useState(() =>
@@ -225,7 +399,8 @@ export default function PlanView({ itinerary, sessionId, apiBase = API_BASE, onB
             if (res.ok) {
                 const data = await res.json();
                 setStops(data.stops || newStops);
-                setTotalPrice(data.total_price || totalPrice);
+                // Also reset stopTotals to resync, or let them recalculate
+                setStopTotals({});
                 setRouteJustification(data.route_justification || routeJustification);
             }
         } catch (err) {
@@ -314,7 +489,9 @@ export default function PlanView({ itinerary, sessionId, apiBase = API_BASE, onB
                     <div className="hidden md:flex items-center gap-4 text-sm">
                         <div className="text-center">
                             <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total Cost</p>
-                            <p className="font-bold text-gray-900">₹{totalPrice.toLocaleString('en-IN')}</p>
+                            <p className="font-bold text-gray-900">
+                                {totalPrice !== null ? `₹${totalPrice.toLocaleString('en-IN')}` : 'Fetching…'}
+                            </p>
                         </div>
                         <div className="text-center">
                             <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total Days</p>
@@ -373,21 +550,22 @@ export default function PlanView({ itinerary, sessionId, apiBase = API_BASE, onB
 
                     {/* Stop cards */}
                     <div className="space-y-3">
-                        {stops.map((stop, i) => (
+                        {stops.map((stop, index) => (
                             <StopCard
-                                key={`${stop.destination}-${i}`}
+                                key={`${stop.destination}-${index}`}
                                 stop={stop}
-                                index={i}
+                                index={index}
                                 total={stops.length}
-                                transport={transportModes[i] || 'flight'}
-                                days={daysPerStop[i] || 2}
+                                transport={transportModes[index] || 'flight'}
+                                days={daysPerStop[index] || 2}
                                 onTransportChange={handleTransportChange}
                                 onDaysChange={handleDaysChange}
-                                isDragging={dragIndex === i}
-                                onDragStart={handleDragStart(i)}
+                                onCostUpdate={handleCostUpdate}
+                                isDragging={dragIndex === index}
+                                onDragStart={handleDragStart(index)}
                                 onDragEnd={handleDragEnd}
-                                onDragOver={handleDragOver(i)}
-                                onDrop={handleDrop(i)}
+                                onDragOver={handleDragOver(index)}
+                                onDrop={handleDrop(index)}
                             />
                         ))}
                     </div>
@@ -396,7 +574,12 @@ export default function PlanView({ itinerary, sessionId, apiBase = API_BASE, onB
                     <div className="card-light mt-5 p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total Estimated Cost (per person)</p>
-                            <p className="text-2xl font-black text-gray-900 mt-0.5">₹{totalPrice.toLocaleString('en-IN')}</p>
+                            <p className="text-2xl font-black text-gray-900 mt-0.5">
+                                {totalPrice !== null
+                                    ? `₹${totalPrice.toLocaleString('en-IN')}`
+                                    : <span className="text-lg text-gray-400">Fetching prices…</span>
+                                }
+                            </p>
                             <p className="text-xs text-gray-400">Flights + Hotels • {totalDays} day trip</p>
                         </div>
                         <button onClick={onConfirm} className="btn-primary px-6 py-3">
