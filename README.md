@@ -69,7 +69,8 @@ The backend handles the AI image matching and connects to the TBO Hotel API & Ge
    For the AI to match images correctly, the backend must have a library of reference images.
    - Ensure the `backend/destinations/` folder is populated with subfolders of destinations (e.g., `goa`, `manali`).
    - Each folder should contain images like `1.jpg`, `2.jpg`, etc.
-   - If this folder is missing, run one of the provided download scripts (e.g., `python download_diverse_photos_20.py`) to generate sample imagery.
+   - **Download the required destination images (20 destinations, 200 images each) from here:** [Destinations Image Folder](https://drive.google.com/drive/folders/1qv3OBHMmHNU4-XxbG-U8KIN4ZaDQi6_A?usp=sharing) and extract/place them inside `backend/destinations/`.
+   - Alternatively, you can run one of the provided Python download scripts (e.g., `python download_diverse_photos_20.py`) to scrape sample imagery yourself.
 
 6. **Configure API Keys (`.env` file)**:
    - Inside the `backend/` folder, create a new file named exactly `.env` (don't forget the dot).
