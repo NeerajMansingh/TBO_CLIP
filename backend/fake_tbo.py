@@ -1520,10 +1520,10 @@ def get_activities_for_destination(tbo_id: str) -> list[dict]:
     # Generic fallback activities for any destination
     return [
         {"id": f"Ac_{tbo_id}_01", "name": f"Highlights Tour of {name}", "price": 1500, "duration": "Half Day", "description": f"Discover the most iconic landmarks and hidden gems of {name} with a knowledgeable local guide who brings the city's story alive."},
-        {"id": f"Ac_{tbo_id}_02", "name": f"Local Cuisine Tasting", "price": 2000, "duration": "Evening", "description": f"Savour the authentic flavours of {name} on a guided food trail. Sample street delicacies, traditional dishes, and local sweets at handpicked eateries."},
-        {"id": f"Ac_{tbo_id}_03", "name": f"Sunset Viewpoint Visit", "price": 800, "duration": "2 Hours", "description": f"Head to the best sunset spot in {name} for golden-hour views you'll never forget. Perfect for photography and quiet reflection."},
+        {"id": f"Ac_{tbo_id}_02", "name": f"{name} Cuisine Tasting", "price": 2000, "duration": "Evening", "description": f"Savour the authentic flavours of {name} on a guided food trail. Sample street delicacies, traditional dishes, and local sweets at handpicked eateries."},
+        {"id": f"Ac_{tbo_id}_03", "name": f"Sunset Viewpoint Visit in {name}", "price": 800, "duration": "2 Hours", "description": f"Head to the best sunset spot in {name} for golden-hour views you'll never forget. Perfect for photography and quiet reflection."},
         {"id": f"Ac_{tbo_id}_04", "name": f"Heritage Walk in {name}", "price": 1200, "duration": "Half Day", "description": f"Walk through the historic heart of {name}, exploring ancient architecture, vibrant markets, and cultural landmarks with expert commentary."},
-        {"id": f"Ac_{tbo_id}_05", "name": f"Full Day Private Explorer", "price": 5000, "duration": "Full Day", "description": f"A fully customisable private day tour of {name}. Your personal guide tailors the itinerary to your interests — temples, nature, or local culture."},
+        {"id": f"Ac_{tbo_id}_05", "name": f"Full Day Private Explorer: {name}", "price": 5000, "duration": "Full Day", "description": f"A fully customisable private day tour of {name}. Your personal guide tailors the itinerary to your interests — temples, nature, or local culture."},
     ]
 
 
