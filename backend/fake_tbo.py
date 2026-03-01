@@ -1812,7 +1812,7 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
             try:
                 res = await client.post(
                     f"{TBO_HOTEL_API_URL}/Search",
-                    auth=tbo_auth, json=search_payload, timeout=8.0
+                    auth=tbo_auth, json=search_payload, timeout=30.0
                 )
                 res.raise_for_status()
                 data = res.json()
@@ -1878,7 +1878,7 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
                 })
                 best_price = min(best_price, total_fare)
 
-            if len(valid_hotels) == 5:
+            if len(valid_hotels) == 20:
                 break
 
         if not valid_hotels:
@@ -1894,7 +1894,7 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
                 f"{TBO_HOTEL_API_URL}/HotelDetails",
                 auth=tbo_auth,
                 json={"Hotelcodes": hotel_codes, "Language": "EN"},
-                timeout=8.0
+                timeout=30.0
             )
             res_details.raise_for_status()
             det_data = res_details.json()
