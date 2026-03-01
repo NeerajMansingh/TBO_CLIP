@@ -56,7 +56,7 @@ export default function PackagePresentation({ packages, itinerary, onBack, onSel
                     className="max-w-2xl mb-20"
                 >
                     <h1 className="text-5xl md:text-[3.5rem] font-black text-slate-900 mb-6 tracking-tight leading-[1.1]">
-                        Your generated <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-300% animate-gradient">trajectories.</span>
+                        Your Generated <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-300% animate-gradient">Trajectories.</span>
                     </h1>
                     <p className="text-lg text-slate-600 leading-relaxed font-normal">
                         We've synthesized your activity selections with three distinct accommodation philosophies. Select the footprint that fits your journey.
