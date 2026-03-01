@@ -374,6 +374,8 @@ export default function App() {
             sessionId={sessionId}
             apiBase={API_BASE}
             budget={budget}
+            durationDays={durationDays}
+            travelMonth={travelMonth}
             onBack={handlePlanBack}
             onGenerate={(packages, selectedActs) => {
               setGeneratedPackages(packages)
@@ -402,6 +404,7 @@ export default function App() {
             initialSelectedActivities={selectedActivities}
             sessionId={sessionId}
             apiBase={API_BASE}
+            durationDays={durationDays}
             onBack={() => setAppState('packages')}
             onConfirm={handleConfirmBooking}
           />

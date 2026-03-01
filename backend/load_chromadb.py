@@ -66,6 +66,14 @@ DESTINATION_PRICES = {
     "ziro": 22000, "udaipur": 24000, "leh": 42000, "rishikesh": 13000,
     "ooty": 13000, "kerala_hills": 17000, "shimla": 17000, "mahabaleshwar": 14000,
     "agra": 15000, "shillong": 20000,
+    
+    # Major Cities
+    "delhi": 18000, "mumbai": 22000, "bangalore": 16000, 
+    "hyderabad": 15000, "kolkata": 14000, "chennai": 15000,
+    
+    # Northeast Additions
+    "cherrapunji": 12000, "dawki": 10000, "mawsynram": 10000,
+    "gangtok": 18000, "pelling": 16000,
 }
 
 

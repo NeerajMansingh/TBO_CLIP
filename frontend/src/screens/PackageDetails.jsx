@@ -21,7 +21,7 @@ const getImageForActivity = (act) => {
     return `https://loremflickr.com/800/600/${keyword}?lock=${lockId}`;
 };
 
-export default function PackageDetails({ pkg, itinerary, initialSelectedActivities, sessionId, apiBase, onBack, onConfirm }) {
+export default function PackageDetails({ pkg, itinerary, initialSelectedActivities, sessionId, apiBase, durationDays, onBack, onConfirm }) {
     const [selectedActivities, setSelectedActivities] = useState(initialSelectedActivities || {});
     const [activitiesByStop, setActivitiesByStop] = useState({});
     const [loading, setLoading] = useState(true);
@@ -29,7 +29,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
     const [swapMenuOpen, setSwapMenuOpen] = useState(null); // { stopId, actId }
 
     const [tripDays, setTripDays] = useState(
-        itinerary.stops ? Math.max(3, itinerary.stops.length * 2 + 1) : 5
+        durationDays || (itinerary.stops ? Math.max(3, itinerary.stops.length * 2 + 1) : 5)
     );
     const [tripBudget, setTripBudget] = useState(pkg.total_price || 100000);
     const [travelWith, setTravelWith] = useState("couple");
@@ -59,7 +59,11 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
 
     const buildDayPlan = () => {
         const days = [];
-        let globalDay = 1;
+        const numStops = itinerary.stops.length;
+
+        // Distribute tripDays across stops
+        const baseDaysPerStop = Math.max(1, Math.floor(tripDays / Math.max(1, numStops)));
+        let remainingDays = tripDays;
 
         itinerary.stops.forEach((stop, stopIdx) => {
             const stopActsAll = activitiesByStop[stop.tbo_id] || [];
@@ -69,20 +73,25 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                 .filter(Boolean);
 
             const isFirst = stopIdx === 0;
-            const isLast = stopIdx === itinerary.stops.length - 1;
-            const totalDays = Math.max(2, Math.ceil(stopSelectedActs.length / 2) + 1);
+            const isLast = stopIdx === numStops - 1;
+
+            // Days for this stop: distribute evenly, give remainder to last stop
+            const daysForStop = isLast ? remainingDays : Math.min(baseDaysPerStop, remainingDays);
+            remainingDays -= daysForStop;
+
             const actsList = [...stopSelectedActs];
 
-            for (let d = 1; d <= totalDays; d++) {
+            for (let d = 1; d <= daysForStop; d++) {
                 const events = [];
+                const globalDay = days.length + 1;
 
                 if (d === 1 && isFirst) {
                     events.push({ type: "transit", label: "Arrival & Check-in", time: "Morning", icon: "🛬", description: "Private transfer to hotel included." });
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Evening", stopId: stop.tbo_id });
-                } else if (d === totalDays && isLast) {
+                } else if (d === daysForStop && isLast) {
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Morning", stopId: stop.tbo_id });
                     events.push({ type: "transit", label: "Departure", time: "Afternoon", icon: "🛫", description: "Transfer to airport." });
-                } else if (d === totalDays && !isLast) {
+                } else if (d === daysForStop && !isLast) {
                     if (actsList.length > 0) events.push({ ...actsList.shift(), type: "activity", time: "Morning", stopId: stop.tbo_id });
                     events.push({ type: "transit", label: `Transit to ${itinerary.stops[stopIdx + 1]?.destination || 'Next City'}`, time: "Afternoon", icon: "🚄", description: "Inter-city transfer." });
                 } else {
@@ -91,10 +100,10 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                 }
 
                 if (!events.some(e => e.type === "activity") && !events.some(e => e.type === "transit")) {
-                    events.push({ type: "leisure", label: "Leisure & Exploration", time: "Flexible", icon: "✨", description: "Free time to explore local markets." });
+                    events.push({ type: "leisure", label: "Leisure & Exploration", time: "Flexible", icon: "✨", description: "Free time to explore local markets, cafes & hidden gems." });
                 }
 
-                days.push({ day: globalDay++, city: stop.destination, stopId: stop.tbo_id, events });
+                days.push({ day: globalDay, city: stop.destination, stopId: stop.tbo_id, events });
             }
         });
 

@@ -103,6 +103,7 @@ class GeneratePackagesRequest(BaseModel):
     session_id: str
     budget: Optional[int] = 100000
     travel_month: Optional[str] = "December"
+    duration_days: Optional[int] = 5
     selections: dict[str, List[str]]
 
 
@@ -438,9 +439,36 @@ async def build_itineraries(
 # ─── Endpoint 2: POST /search (new — text-based) ─────────────────────────────
 
 
+# ─── Well-known origin cities with coordinates (for proximity scoring) ────────
+_ORIGIN_COORDS = {
+    "mumbai": (19.08, 72.88), "delhi": (28.61, 77.21), "bangalore": (12.97, 77.59),
+    "chennai": (13.08, 80.27), "kolkata": (22.57, 88.36), "hyderabad": (17.39, 78.49),
+    "ahmedabad": (23.02, 72.57), "pune": (18.52, 73.86), "dubai": (25.20, 55.27),
+    "london": (51.51, -0.13), "singapore": (1.35, 103.82),
+}
+
+# ─── Best season by destination category (fallback if not in registry) ─────────
+_BEST_SEASON_MAP = {
+    "beach":      ["October", "November", "December", "January", "February", "March"],
+    "adventure":  ["March", "April", "May", "June", "September", "October"],
+    "historical": ["October", "November", "December", "January", "February", "March"],
+    "nature":     ["September", "October", "November", "December", "January", "February"],
+    "cultural":   ["October", "November", "December", "January", "February", "March"],
+}
+
+def _get_best_season(dest: dict) -> str:
+    """Return the best season string for a destination."""
+    if dest.get("best_season"):
+        return dest["best_season"]
+    cat = dest.get("category", "nature")
+    months = _BEST_SEASON_MAP.get(cat, ["October", "November", "February", "March"])
+    return f"{months[0]} – {months[-1]}"
+
+
 # ─── Fast local keyword scorer for text search ───────────────────────────────
 
-def _score_destination_for_query(dest: dict, query_lower: str, vibes: list) -> float:
+def _score_destination_for_query(dest: dict, query_lower: str, vibes: list,
+                                  origin_city: str = None, travel_month: str = None) -> float:
     """Score a _DEST_REGISTRY entry against a free-text query. Pure Python, no ML."""
     score = 0.0
     name = dest["name"].lower()
@@ -485,16 +513,59 @@ def _score_destination_for_query(dest: dict, query_lower: str, vibes: list) -> f
                     score += 15
                     break
 
-    # Vibe matching
+    # Vibe matching — labels must match frontend exactly
     vibe_cat_map = {
-        "Beach Vibes": "beach", "Adventure": "adventure", "Heritage & History": "historical",
+        "Adventure": "adventure",
+        "Beach": "beach",
+        "Nature": "nature",
+        "City": "cultural",       # City vibe → cultural destinations
+        "Romantic": "nature",     # Romantic → scenic/nature spots
+        "Family": "nature",       # Family → nature-friendly spots
+        # Also support older/extended labels
+        "Beach Vibes": "beach", "Heritage & History": "historical",
         "Nature & Wildlife": "nature", "Cultural & Spiritual": "cultural",
-        "Mountain Views": "adventure", "Luxury": "nature",
+        "Mountain Views": "adventure", "Luxury": "historical",
     }
     for vibe in (vibes or []):
         mapped_cat = vibe_cat_map.get(vibe)
         if mapped_cat and cat == mapped_cat:
             score += 20
+        # Also check if vibe keyword appears in description
+        vibe_lower = vibe.lower()
+        if vibe_lower in desc or vibe_lower in highlights:
+            score += 10
+
+    # Romantic vibe bonus: Udaipur, Alleppey, Goa, Munnar etc.
+    romantic_destinations = {"udaipur", "alleppey", "goa", "munnar", "srinagar", "andaman", "coorg", "ooty", "kodaikanal"}
+    if any(v.lower() == "romantic" for v in (vibes or [])):
+        if folder in romantic_destinations:
+            score += 25
+
+    # Family vibe bonus
+    family_destinations = {"ooty", "munnar", "shimla", "darjeeling", "mussoorie", "nainital", "kodaikanal", "coorg", "kerala_hills", "mahabaleshwar"}
+    if any(v.lower() == "family" for v in (vibes or [])):
+        if folder in family_destinations:
+            score += 25
+
+    # Season matching: boost destinations that are great in the selected travel month
+    if travel_month:
+        best = _get_best_season(dest)
+        if travel_month.lower() in best.lower():
+            score += 10
+
+    # Origin city proximity bonus: prefer destinations accessible from origin
+    if origin_city:
+        origin_key = origin_city.lower().strip()
+        origin_coords = _ORIGIN_COORDS.get(origin_key)
+        if origin_coords:
+            dist = _haversine_km(origin_coords[0], origin_coords[1], dest["lat"], float(dest["lon"]))
+            # Slight bonus for closer destinations (max 15 pts if < 300km)
+            if dist < 300:
+                score += 15
+            elif dist < 600:
+                score += 8
+            elif dist < 1000:
+                score += 3
 
     return score
 
@@ -505,7 +576,9 @@ for _tbo_id, _info in DESTINATION_MAP.items():
     _NAME_TO_TBO[_info["name"].lower()] = _tbo_id
 
 
-def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_month: str, parsed: dict | None = None) -> list:
+def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_month: str,
+                                   parsed: dict | None = None, origin_city: str = None,
+                                   duration_days: int = 5) -> list:
     """
     Returns exactly 3 INDEPENDENT single-destination results, uniquely ranked.
     Card 1 = Best match, Card 2 = 2nd best DIFFERENT CATEGORY, Card 3 = 3rd best.
@@ -527,7 +600,7 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
                     boosted_names.add(d["name"].lower())
 
     def base_score(d):
-        s = _score_destination_for_query(d, q, vibes)
+        s = _score_destination_for_query(d, q, vibes, origin_city=origin_city, travel_month=travel_month)
         if d["name"].lower() in boosted_names:
             s += 80
         return s
@@ -586,7 +659,9 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
         img_path = f"/destinations/{dest_info['folder']}/1.jpg"
         label, card_type = card_labels[rank_idx]
         
-        est_price = DESTINATION_PRICES.get(dest_info["folder"], 15000)
+        est_price_per_night = DESTINATION_PRICES.get(dest_info["folder"], 15000)
+        # Scale price by trip duration (base prices assume ~3 nights)
+        est_price = int(est_price_per_night * max(1, duration_days) / 3)
 
         stop_data = {
             "destination": dest_info["name"],
@@ -596,7 +671,7 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
             "hotels": [],
             "flights": [],
             "tagline": dest_info.get("description", "")[:150],
-            "best_season": travel_month or "Year round",
+            "best_season": _get_best_season(dest_info),
             "itinerary": [],
             "similarity_rank": rank_idx + 1,
             "category": dest_info.get("category", ""),
@@ -687,6 +762,8 @@ async def text_search(request: SearchRequest):
         budget=effective_budget,
         travel_month=effective_month,
         parsed=parsed_query,
+        origin_city=origin_city,
+        duration_days=duration_days,
     )
 
     itineraries = await _enrich_itineraries_with_tbo(itineraries, effective_budget, effective_month)
@@ -2006,6 +2083,73 @@ _DEST_REGISTRY: list[dict] = [
         "highlights": ["Hairpin Drive", "Agaya Gangai Falls", "Arapaleeswarar Temple"],
         "visit_duration": "1 day",
         "rating": 4.1
+    },
+    # ── Major Cities (commonly searched) ──────────────────────────────────────
+    {
+        "name": "Delhi",
+        "folder": "delhi",
+        "lat": 28.61,
+        "lon": 77.21,
+        "category": "historical",
+        "description": "India's capital — Mughal monuments, street food, vibrant bazaars and world-class museums.",
+        "highlights": ["Red Fort", "Qutub Minar", "India Gate", "Chandni Chowk", "Humayun's Tomb"],
+        "visit_duration": "2-3 days",
+        "rating": 4.4
+    },
+    {
+        "name": "Mumbai",
+        "folder": "mumbai",
+        "lat": 19.08,
+        "lon": 72.88,
+        "category": "cultural",
+        "description": "City of Dreams — Bollywood, Gateway of India, Marine Drive sunsets and street food paradise.",
+        "highlights": ["Gateway of India", "Marine Drive", "Elephanta Caves", "Dhobi Ghat", "Colaba"],
+        "visit_duration": "2-3 days",
+        "rating": 4.3
+    },
+    {
+        "name": "Bangalore",
+        "folder": "bangalore",
+        "lat": 12.97,
+        "lon": 77.59,
+        "category": "cultural",
+        "description": "Garden City & tech capital — craft breweries, parks, palace and vibrant nightlife.",
+        "highlights": ["Lalbagh Gardens", "Bangalore Palace", "Cubbon Park", "Nandi Hills nearby"],
+        "visit_duration": "1-2 days",
+        "rating": 4.1
+    },
+    {
+        "name": "Hyderabad",
+        "folder": "hyderabad",
+        "lat": 17.39,
+        "lon": 78.49,
+        "category": "historical",
+        "description": "City of Pearls — Charminar, Golconda Fort, legendary Hyderabadi biryani.",
+        "highlights": ["Charminar", "Golconda Fort", "Hussain Sagar Lake", "Ramoji Film City"],
+        "visit_duration": "2 days",
+        "rating": 4.3
+    },
+    {
+        "name": "Kolkata",
+        "folder": "kolkata",
+        "lat": 22.57,
+        "lon": 88.36,
+        "category": "cultural",
+        "description": "City of Joy — colonial architecture, Durga Puja, street food and literary heritage.",
+        "highlights": ["Victoria Memorial", "Howrah Bridge", "Durga Puja", "Park Street"],
+        "visit_duration": "2-3 days",
+        "rating": 4.3
+    },
+    {
+        "name": "Chennai",
+        "folder": "chennai",
+        "lat": 13.08,
+        "lon": 80.27,
+        "category": "cultural",
+        "description": "Gateway to South India — Marina Beach, Kapaleeshwarar Temple and Carnatic music traditions.",
+        "highlights": ["Marina Beach", "Kapaleeshwarar Temple", "Mahabalipuram nearby", "Dakshinachitra"],
+        "visit_duration": "1-2 days",
+        "rating": 4.1
     }
 ]
 
@@ -2076,19 +2220,22 @@ async def get_nearby_places(destination: str, radius_km: float = 150.0):
     """
     logger.info(f"GET /nearby | destination={destination} radius_km={radius_km}")
 
-    # Progressive radius: try 70km, then 150km, then 300km to always return something
+    # Track which radius actually produced results
+    actual_radius = radius_km
     for r in [radius_km, 150.0, 300.0, 600.0]:
         places = _get_nearby_from_registry(destination, r)
         if places:
+            actual_radius = r
             break
 
-    actual_radius = places[0]["distance_km"] if places else 0
+    # Use the farthest place's actual distance as the real radius
+    max_distance = max((p["distance_km"] for p in places), default=0) if places else 0
 
     return {
         "destination": destination,
         "nearby_places": places,
         "count": len(places),
-        "radius_km": radius_km,
+        "radius_km": round(max_distance) if max_distance > 0 else round(actual_radius),
     }
 
 @app.post("/chat")
@@ -2429,59 +2576,88 @@ async def generate_packages(request: GeneratePackagesRequest):
             except Exception as e:
                 logger.error(f"Error fetching TBO data for {stop_tbo_id}: {e}")
 
+    # Use duration_days from request (how many nights)
+    num_nights = max(1, (request.duration_days or 5) - 1)  # e.g. 5-day trip = 4 nights
+
     # Calculate baseline flight cost
     if tbo_called and real_flight_cost > 0:
         base_flight_total = int(real_flight_cost)
     else:
-        base_flight_total = int(base_budget * 0.3)
+        # Reasonable flight estimate: ₹5,000–₹15,000 range per stop, not budget %
+        num_stops = max(1, len(request.selections))
+        base_flight_total = 8000 * num_stops  # ~₹8k per flight leg as baseline
         
-    # Calculate baseline hotel total (standard)
+    # Calculate baseline hotel per-night cost (standard tier)
     if tbo_called and real_hotel_tiers["standard"] > 0:
-        base_hotel_total = int(real_hotel_tiers["standard"])
+        # TBO returns per-stay price; divide by nights to get per-night, then scale
+        base_hotel_per_night = int(real_hotel_tiers["standard"])
+        base_hotel_total = base_hotel_per_night * num_nights
     else:
-        # Fallback to math estimations if TBO fails entirely or no standard hotels exist
-        base_hotel_total = int(base_budget * 0.4)
+        # Fallback: reasonable per-night estimate based on budget tier
+        per_night_budget = max(1500, min(8000, int(base_budget * 0.08)))  # 8% of budget per night
+        base_hotel_total = per_night_budget * num_nights
 
     # Calculate final tiered hotel costs with graceful fallback 
     # if a specific tier was completely missing from the TBO response
-    backpacker_hotel = int(real_hotel_tiers["budget"]) if real_hotel_tiers["budget"] > 0 else int(base_hotel_total * 0.6)
+    if real_hotel_tiers["budget"] > 0:
+        backpacker_hotel = int(real_hotel_tiers["budget"]) * num_nights
+    else:
+        backpacker_hotel = int(base_hotel_total * 0.6)
     balanced_hotel = base_hotel_total
-    premium_hotel = int(real_hotel_tiers["premium"]) if real_hotel_tiers["premium"] > 0 else int(base_hotel_total * 1.8)
+    if real_hotel_tiers["premium"] > 0:
+        premium_hotel = int(real_hotel_tiers["premium"]) * num_nights
+    else:
+        premium_hotel = int(base_hotel_total * 1.8)
     
     packages = [
         {
             "id": "backpacker",
             "tier": "The Backpacker",
-            "description": "Budget-conscious. Prioritizes activities with a simpler 2-3 star hotel stay.",
+            "description": f"Budget-conscious. {num_nights}-night stay in 2-3 star hotels with your activities.",
             "flight_cost": base_flight_total,
             "hotel_cost": backpacker_hotel,
             "activities_cost": activities_total,
             "total_price": base_flight_total + backpacker_hotel + activities_total,
             "hotel_rating": "2-3 Stars",
+            "within_budget": (base_flight_total + backpacker_hotel + activities_total) <= base_budget,
         },
         {
             "id": "balanced",
             "tier": "The Balanced Explorer",
-            "description": "The golden mean. Standard 3-4 star accommodations with your full activity list.",
+            "description": f"The golden mean. {num_nights}-night stay in 3-4 star hotels with your full activity list.",
             "flight_cost": base_flight_total,
             "hotel_cost": balanced_hotel,
             "activities_cost": activities_total,
             "total_price": base_flight_total + balanced_hotel + activities_total,
             "hotel_rating": "3-4 Stars",
+            "within_budget": (base_flight_total + balanced_hotel + activities_total) <= base_budget,
         },
         {
             "id": "premium",
             "tier": "The Premium Leisure",
-            "description": "Luxury experience. Upgraded 4.5-5 star hotels. Includes all selected activities.",
+            "description": f"Luxury experience. {num_nights}-night stay in 4.5-5 star hotels. All activities included.",
             "flight_cost": base_flight_total,
             "hotel_cost": premium_hotel,
             "activities_cost": activities_total,
             "total_price": base_flight_total + premium_hotel + activities_total,
             "hotel_rating": "4.5-5 Stars",
+            "within_budget": (base_flight_total + premium_hotel + activities_total) <= base_budget,
         }
     ]
+
+    # Add budget warning if no package fits
+    any_fits = any(p["within_budget"] for p in packages)
+    budget_warning = None
+    if not any_fits:
+        budget_warning = f"All packages exceed your ₹{base_budget:,} budget for a {request.duration_days}-day trip. Consider reducing activities or trip duration."
     
-    return {"packages": packages}
+    return {
+        "packages": packages,
+        "duration_days": request.duration_days or 5,
+        "num_nights": num_nights,
+        "budget": base_budget,
+        "budget_warning": budget_warning,
+    }
 
 
 @app.get("/activities/{tbo_id}")
