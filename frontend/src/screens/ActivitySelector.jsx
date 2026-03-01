@@ -76,6 +76,7 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                 body: JSON.stringify({
                     session_id: sessionId,
                     budget: budget || 100000,
+                    travel_month: itinerary.travel_month || "December",
                     selections: selectedActivities
                 })
             });

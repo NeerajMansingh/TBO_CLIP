@@ -101,7 +101,8 @@ class ReorderRequest(BaseModel):
 
 class GeneratePackagesRequest(BaseModel):
     session_id: str
-    budget: int
+    budget: Optional[int] = 100000
+    travel_month: Optional[str] = "December"
     selections: dict[str, List[str]]
 
 
@@ -344,7 +345,7 @@ async def build_itineraries(
             "destination": cand["destination"],
             "tbo_id": cand["tbo_id"],
             "photo": img_path,
-            "price_per_person": 0,
+            "price_per_person": cand.get("price_per_person") or 15000,
             "hotels": [],
             "flights": [],
             "tagline": reg_info.get("description", "")[:150] if reg_info else "",
@@ -360,7 +361,7 @@ async def build_itineraries(
             "type": card_type,
             "label": label,
             "stops": [stop_data],
-            "total_price": 0,
+            "total_price": cand.get("price_per_person") or 15000,
             "stop_count": 1,
             "region": reg_info.get("folder", "India").replace("_", " ").title() if reg_info else "India",
             "similarity_rank": rank_idx + 1,
@@ -374,7 +375,7 @@ async def build_itineraries(
         travel_dates=travel_dates,
         current_match=first_stop["destination"],
         current_tbo_id=first_stop["tbo_id"],
-        current_price=0,
+        current_price=first_stop["price_per_person"],
         current_hotels=[],
         current_photo=first_stop["photo"],
         match_reasons=["visual similarity to your photo", "matches your budget"],
@@ -384,7 +385,7 @@ async def build_itineraries(
         itinerary_type=itineraries[0]["type"],
         itinerary_label=itineraries[0]["label"],
         itinerary_region=itineraries[0]["region"],
-        itinerary_total_price=0,
+        itinerary_total_price=itineraries[0]["total_price"],
     )
 
     return {
@@ -528,6 +529,7 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
         if len(selected) == 3:
             break
 
+    from load_chromadb import DESTINATION_PRICES
     card_labels = [
         ("#1 Best Match",   "best-match"),
         ("#2 Great Option", "runner-up"),
@@ -547,13 +549,14 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
 
         img_path = f"/destinations/{dest_info['folder']}/1.jpg"
         label, card_type = card_labels[rank_idx]
+        
+        est_price = DESTINATION_PRICES.get(dest_info["folder"], 15000)
 
         stop_data = {
             "destination": dest_info["name"],
             "tbo_id": tbo_id,
             "photo": img_path,
-            # price_per_person = 0 until real TBO data fetched
-            "price_per_person": 0,
+            "price_per_person": est_price,
             "hotels": [],
             "flights": [],
             "tagline": dest_info.get("description", "")[:150],
@@ -569,7 +572,7 @@ def _local_search_ranked_results(query: str, vibes: list, budget: int, travel_mo
             "type": card_type,
             "label": label,
             "stops": [stop_data],
-            "total_price": 0,   # Will be updated when TBO data is fetched
+            "total_price": est_price,   # Will be updated when TBO data is fetched
             "stop_count": 1,
             "region": dest_info.get("folder", "India").replace("_", " ").title(),
             "similarity_rank": rank_idx + 1,
@@ -584,11 +587,11 @@ _local_search_itineraries = _local_search_ranked_results
 
 
 @app.get("/tbo_details")
-async def get_tbo_details(tbo_id: str, budget: int = 100000):
+async def get_tbo_details(tbo_id: str, budget: int = 100000, travel_date_str: str = None):
     """Fetch live TBO hotel and flight options for a specific destination."""
     from fake_tbo import get_tbo_data
     try:
-        data = await get_tbo_data(tbo_id, budget)
+        data = await get_tbo_data(tbo_id, budget, travel_date_str)
         if data:
             return data
     except Exception as e:
@@ -2335,9 +2338,57 @@ async def generate_packages(request: GeneratePackagesRequest):
                 activities_total += act["price"]
 
     base_budget = request.budget or 100000
-    # Estimate flight + hotel from budget minus activities
-    base_flight_total = int(base_budget * 0.3)
-    base_hotel_total = int(base_budget * 0.4)
+    travel_month = request.travel_month or "December"
+    
+    # Simple travel_month -> date parser (defaults to 15th of the month)
+    from datetime import datetime
+    try:
+        current_year = datetime.now().year
+        # Parse month name
+        dt = datetime.strptime(f"{travel_month} {current_year}", "%B %Y")
+        # If the generated date is in the past, bump to next year
+        if dt.month < datetime.now().month:
+            dt = dt.replace(year=current_year + 1)
+        # Target the 15th of that month as a representative date
+        travel_date_str = dt.replace(day=15).strftime("%Y-%m-%d")
+    except ValueError:
+        travel_date_str = None
+        logger.warning(f"Could not parse travel_month '{travel_month}' into a date.")
+    
+    # Attempt to fetch real TBO data for accurate flight & hotel costs
+    from fake_tbo import get_tbo_data
+    import asyncio
+    
+    real_flight_cost = 0
+    real_hotel_cost = 0
+    tbo_called = False
+    
+    if request.selections:
+        per_stop_budget = base_budget // max(1, len(request.selections))
+        for stop_tbo_id in request.selections.keys():
+            if stop_tbo_id.startswith("LOCAL_"):
+                continue
+            
+            try:
+                tbo_data = await get_tbo_data(stop_tbo_id, per_stop_budget, travel_date_str)
+                if tbo_data:
+                    tbo_called = True
+                    real_flight_cost += tbo_data.get("flight_min_fare") or 0
+                    
+                    hotels = tbo_data.get("hotels", [])
+                    if hotels:
+                        min_hp = min(h.get("price_per_night", 0) for h in hotels)
+                        real_hotel_cost += min_hp * 2 # Assume 2 nights baseline
+            except Exception as e:
+                logger.error(f"Error fetching TBO data for {stop_tbo_id}: {e}")
+
+    if tbo_called and (real_flight_cost > 0 or real_hotel_cost > 0):
+        base_flight_total = int(real_flight_cost) if real_flight_cost > 0 else int(base_budget * 0.3)
+        base_hotel_total = int(real_hotel_cost) if real_hotel_cost > 0 else int(base_budget * 0.4)
+    else:
+        # Fallback to math estimations if TBO fails entirely or no valid stops
+        base_flight_total = int(base_budget * 0.3)
+        base_hotel_total = int(base_budget * 0.4)
 
     backpacker_hotel = int(base_hotel_total * 0.6)
     balanced_hotel = base_hotel_total

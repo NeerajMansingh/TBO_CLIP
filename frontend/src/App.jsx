@@ -66,6 +66,13 @@ export default function App() {
     if (saved) setRecentSearches(JSON.parse(saved))
   }, [])
 
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [error])
+
   const saveSearch = (query) => {
     if (!query?.trim()) return
     const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 10)
@@ -294,9 +301,10 @@ export default function App() {
 
       {/* Global error toast */}
       {error && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2 shadow-lg animate-slide-up">
-          <span>⚠️</span> {error}
-          <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-700">✕</button>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-3 shadow-2xl animate-slide-up transform transition-all">
+          <span className="text-lg">⚠️</span>
+          <span className="font-medium">{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-700 transition-colors p-1 rounded-full hover:bg-red-100">✕</button>
         </div>
       )}
 

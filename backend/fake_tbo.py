@@ -1568,7 +1568,7 @@ def get_budget_tier(budget: int) -> str:
     return "premium"
 
 
-async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: str) -> Optional[float]:
+async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: str, travel_date: datetime = None) -> Optional[float]:
     """
     Search TBO for DEL -> dest_airport flights (real fare for this destination).
     Falls back to DEL -> BLR proxy if the destination airport has no UAT inventory.
@@ -1593,7 +1593,9 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
             logger.warning(f"TBO Flight auth failed: {auth_json.get('Error')}")
             return None
 
-        dep_date = f"{datetime.now() + timedelta(days=30):%Y-%m-%dT00:00:00}"
+        # Use the provided travel_date, or default to +30 days 
+        target_date = travel_date or (datetime.now() + timedelta(days=30))
+        dep_date = f"{target_date:%Y-%m-%dT00:00:00}"
 
         # 2. Try real destination first, fall back to proxy if no results
         airports_to_try = [dest_airport]
@@ -1711,10 +1713,11 @@ async def _lookup_hotel_codes(client: httpx.AsyncClient, city_code: str) -> str:
     return ""
 
 
-async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
+async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) -> Optional[dict]:
     """
     Search TBO's live endpoints to find actual hotel prices and availability.
-    Tries +30 days first; falls back to +60 days if no rooms available.
+    If travel_date_str is provided (YYYY-MM-DD), uses that date.
+    Otherwise tries +30 days first; falls back to +60 days if no rooms available.
     """
     dest_info = DESTINATION_MAP.get(tbo_id)
     if not dest_info:
@@ -1748,10 +1751,43 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
 
         hotel_codes_to_use = _hotel_code_cache.get(tbo_id) or dest_info["hotel_codes"]
 
-        # ── 1. Hotel Search: try +30 days first, fall back to +60 days ────────
-        for day_offset in [30, 60]:
-            checkin  = (datetime.now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
-            checkout = (datetime.now() + timedelta(days=day_offset + 2)).strftime("%Y-%m-%d")
+        # ── 1. Hotel Search: Determine Target Dates ────────
+        target_dates = []
+        parsed_travel_date = None
+        
+        if travel_date_str:
+            try:
+                parsed_travel_date = datetime.strptime(travel_date_str, "%Y-%m-%d")
+                # Ensure the date is in the future
+                if parsed_travel_date > datetime.now():
+                    target_dates.append({
+                        "checkin": parsed_travel_date.strftime("%Y-%m-%d"),
+                        "checkout": (parsed_travel_date + timedelta(days=2)).strftime("%Y-%m-%d"),
+                        "is_fallback": False
+                    })
+                else:
+                    logger.warning(f"Provided travel date {travel_date_str} is in the past. Falling back to offsets.")
+            except ValueError:
+                logger.warning(f"Invalid travel_date format: {travel_date_str}. Expected YYYY-MM-DD. Falling back to offsets.")
+        
+        if not target_dates:
+            target_dates = [
+                {
+                    "checkin": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+                    "checkout": (datetime.now() + timedelta(days=32)).strftime("%Y-%m-%d"),
+                    "is_fallback": False
+                },
+                {
+                    "checkin": (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%d"),
+                    "checkout": (datetime.now() + timedelta(days=62)).strftime("%Y-%m-%d"),
+                    "is_fallback": True
+                }
+            ]
+
+        for date_info in target_dates:
+            checkin = date_info["checkin"]
+            checkout = date_info["checkout"]
+            
             search_payload = {
                 "CheckIn": checkin,
                 "CheckOut": checkout,
@@ -1770,10 +1806,14 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 )
                 res.raise_for_status()
                 data = res.json()
+                
+                import json
+                logger.info(f"\n{'='*50}\nTBO HOTEL SEARCH RAW RESPONSE ({dest_info['name']})\n{'='*50}\n{json.dumps(data, indent=2)}\n")
+                
                 status_code = data.get("Status", {}).get("Code")
                 if status_code == 200 and data.get("HotelResult"):
                     hotel_results = data["HotelResult"]
-                    if day_offset > 30:
+                    if date_info.get("is_fallback"):
                         hotel_price_date_label = f"{checkin} to {checkout}"
                     logger.info(
                         f"TBO Hotel OK for {dest_info['name']} "
@@ -1782,12 +1822,12 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                     break
                 else:
                     logger.warning(
-                        f"TBO Hotel +{day_offset}d: Code={status_code} "
+                        f"TBO Hotel ({checkin}-{checkout}): Code={status_code} "
                         f"'{data.get('Status',{}).get('Description','')}'"
                         f" — retrying with later dates"
                     )
             except Exception as e:
-                logger.error(f"TBO Search exception (+{day_offset}d): {e}")
+                logger.error(f"TBO Search exception ({checkin}-{checkout}): {e}")
 
         if not hotel_results:
             logger.warning(
@@ -1892,20 +1932,24 @@ async def get_tbo_data(tbo_id: str, budget: int) -> Optional[dict]:
                 "description": description,
             })
 
-        # ── 4. Flight connectivity check ──────────────────────────────────────
-        flight_result = await _check_flight_connectivity(client, dest_info["airport"])
-        flight_options = flight_result["options"] if flight_result else []
-        flight_min_fare = flight_result["min_fare"] if flight_result else None
+        # ── 4. Flight connectivity check (DEL -> Destination) ────────────────────
+        flight_fares = {}
+        dest_airport = dest_info.get("airport_code")
+        if dest_airport:
+            flight_fare = await _check_flight_connectivity(client, dest_airport, parsed_travel_date)
+            if flight_fare:
+                flight_fares["DEL"] = flight_fare
 
-    return {
-        "destination": dest_info["name"],
-        "price_per_person": best_price,
-        "hotels": final_hotels,
-        "flights": flight_options,
-        "flight_available_from_delhi": flight_min_fare is not None,
-        "flight_min_fare": int(flight_min_fare) if flight_min_fare else None,
-        "hotel_price_date_label": hotel_price_date_label,  # None = +30d, str = fallback date
-        "tagline": f"Discover the magic of {dest_info['name']}",
-        "best_season": "Year-round",
-    }
+        if hotel_results:
+            return {
+                "destination": dest_info["name"],
+                "price_per_person": min([h["price_per_night"] for h in valid_hotels], default=0) * 2,
+                "hotels": valid_hotels,
+                "flight_available_from_delhi": "DEL" in flight_fares,
+                "flight_min_fare": flight_fares.get("DEL"),
+                "hotel_price_date_label": hotel_price_date_label,  # None = +30d, str = fallback date
+                "tagline": dest_info.get("tagline", ""),
+                "best_season": dest_info.get("best_season", ""),
+            }
 
+        return None

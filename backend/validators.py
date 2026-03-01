@@ -29,7 +29,7 @@ def validate_search_request(
         errors.append("Either a search query or a valid budget is required.")
 
     if query is not None:
-        if len(query.strip()) == 0:
+        if len(query.strip()) == 0 or query == "Weekend trip in India":
             errors.append("Search query cannot be empty.")
         if len(query) > 500:
             errors.append("Search query is too long (max 500 characters).")

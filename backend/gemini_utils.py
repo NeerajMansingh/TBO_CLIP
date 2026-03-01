@@ -117,7 +117,11 @@ Rules:
             "raw_query": query,
         }
     except Exception as e:
-        logger.warning(f"NLP query parse failed, using fallback: {e}")
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            logger.warning("[Gemini Quota Exceeded] Unable to parse search query via LLM. Using fallback.")
+        else:
+            logger.warning(f"NLP query parse failed, using fallback: {err_str[:200]}...")
         return {
             "budget": None,
             "duration_days": None,
@@ -200,7 +204,12 @@ Return ONLY this JSON (no extra text):
             "stop_itineraries": result.get("stop_itineraries", {}),
         }
     except Exception as e:
-        logger.warning(f"Gemini itinerary explanation failed: {e}")
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            logger.warning(f"[Gemini Quota Exceeded] Unable to generate itinerary narrative. Using fallback.")
+        else:
+            logger.warning(f"Gemini itinerary explanation failed: {err_str[:200]}...")
+            
         fallback_itineraries = {}
         for name in stop_names:
             fallback_itineraries[name] = [
@@ -355,8 +364,10 @@ def generate_chat_response(session: dict) -> dict[str, Any]:
         
         err_str = str(e)
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            logger.warning("[Gemini Quota Exceeded] Unable to generate dynamic chat response. Using fallback.")
             msg = "I'm receiving too many requests right now and hit my API rate limit! Please wait a minute and try asking again."
         else:
+            logger.warning(f"Generating chat response failed: {err_str[:200]}...")
             msg = "I want to help find the perfect destination for you. Could you tell me what's most important — the landscape, the activities, or the overall vibe?"
 
         return {
