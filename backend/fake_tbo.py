@@ -1626,8 +1626,18 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
                 flights = response_data["Results"][0]
                 flight_options = []
                 for f in flights:
-                    fare = f.get("Fare", {}).get("PublishedFare")
-                    if fare:
+                    fare_dict = f.get("Fare", {})
+                    fare_val = fare_dict.get("PublishedFare")
+                    currency = fare_dict.get("Currency", "INR").upper()
+                    if fare_val:
+                        fare = float(fare_val)
+                        if currency == "USD":
+                            fare *= 85.0
+                        elif currency == "EUR":
+                            fare *= 90.0
+                        elif currency == "GBP":
+                            fare *= 105.0
+                            
                         # Try to extract airline name (TBO Segments format)
                         airline = "Airline"
                         try:
@@ -1637,7 +1647,7 @@ async def _check_flight_connectivity(client: httpx.AsyncClient, dest_airport: st
                             pass
                         flight_options.append({
                             "id": f.get("ResultIndex", "0"),
-                            "fare": float(fare),
+                            "fare": fare,
                             "airline": airline
                         })
 
@@ -1842,10 +1852,17 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
 
         for hotel in hotel_results:
             rooms = hotel.get("Rooms", [])
+            currency = hotel.get("Currency", "INR").upper()
             if not rooms:
                 continue
             try:
                 total_fare = float(rooms[0].get("TotalFare", float("inf")))
+                if currency == "USD":
+                    total_fare *= 85.0
+                elif currency == "EUR":
+                    total_fare *= 90.0
+                elif currency == "GBP":
+                    total_fare *= 105.0
             except (TypeError, ValueError):
                 total_fare = float("inf")
             if total_fare == float("inf"):

@@ -81,10 +81,11 @@ export default function App() {
   }
 
   // ── Search handler ────────────────────────────────────────────────────────
-  const handleSearch = useCallback(async (isReroll = false) => {
+  const handleSearch = useCallback(async (isReroll = false, overrideQuery = null) => {
     setError(null)
     setAppState('loading')
-    if (!isReroll && chatInput) saveSearch(chatInput)
+    const activeQuery = overrideQuery || chatInput
+    if (!isReroll && activeQuery) saveSearch(activeQuery)
 
     try {
       let data
@@ -107,7 +108,7 @@ export default function App() {
         data = await res.json()
       } else {
         // Text-based search → /search
-        const query = chatInput || 'Weekend trip in India'
+        const query = activeQuery || 'Weekend trip in India'
         const res = await fetch(`${API_BASE}/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -185,8 +186,9 @@ export default function App() {
 
   const handleSurpriseMe = () => {
     const surprises = ['Offbeat monsoon destination in India', 'Hidden gem hill station', 'Spiritual journey across Varanasi and Rishikesh']
-    setChatInput(surprises[Math.floor(Math.random() * surprises.length)])
-    setTimeout(() => handleSearch(false), 100)
+    const pick = surprises[Math.floor(Math.random() * surprises.length)]
+    setChatInput(pick)
+    handleSearch(false, pick)
   }
 
   // ── Navigation helpers ────────────────────────────────────────────────────
@@ -279,7 +281,8 @@ export default function App() {
     <div className="min-h-screen bg-hero text-gray-900 font-sans overflow-x-hidden">
 
       {/* Navbar — hidden in activity flow which have their own top bars */}
-      {!['plan', 'activities', 'packages', 'package_details'].includes(appState) && (
+      {/* {!['plan', 'activities', 'packages', 'package_details'].includes(appState) && ( */}
+      {!['home', 'plan', 'destination-select', 'activities', 'packages', 'package_details'].includes(appState) && (
         <nav className="navbar-light w-full px-6 py-4 flex justify-between items-center sticky top-0 z-40">
           <button onClick={handleReset} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">

@@ -269,6 +269,40 @@ def _build_itinerary_options(
 
 # ─── Endpoint 1: POST /itineraries (original — image-based) ──────────────────
 
+async def _enrich_itineraries_with_tbo(itineraries: list, budget: int, travel_dates: str = None) -> list:
+    """Concurrently fetch TBO data for the top matched destinations to show real prices."""
+    from fake_tbo import get_tbo_data
+    import asyncio
+
+    async def fetch_and_update(itin):
+        if not itin.get("stops"):
+            return
+        stop = itin["stops"][0]
+        tbo_id = stop.get("tbo_id")
+        if not tbo_id:
+            return
+            
+        try:
+            # We use an 8-second timeout so we don't block the search response forever
+            tbo_data = await asyncio.wait_for(get_tbo_data(tbo_id, budget, travel_dates), timeout=8.0)
+            if tbo_data is not None:
+                if tbo_data.get("price_per_person"):
+                    stop["price_per_person"] = tbo_data["price_per_person"]
+                    itin["total_price"] = tbo_data["price_per_person"]
+                if tbo_data.get("hotels"):
+                    stop["hotels"] = tbo_data["hotels"]
+                if tbo_data.get("flight_min_fare"):
+                    stop["flights"] = [{"price": tbo_data["flight_min_fare"]}]
+                    stop["flight_min_fare"] = tbo_data["flight_min_fare"]
+        except asyncio.TimeoutError:
+            logger.warning(f"TBO enrichment timed out for {tbo_id}")
+        except Exception as e:
+            logger.error(f"Error enriching {tbo_id} with TBO data: {e}")
+
+    await asyncio.gather(*(fetch_and_update(itin) for itin in itineraries))
+    return itineraries
+
+
 @app.post("/itineraries")
 async def build_itineraries(
     photo: UploadFile = File(...),
@@ -366,6 +400,8 @@ async def build_itineraries(
             "region": reg_info.get("folder", "India").replace("_", " ").title() if reg_info else "India",
             "similarity_rank": rank_idx + 1,
         })
+
+    itineraries = await _enrich_itineraries_with_tbo(itineraries, budget, travel_dates)
 
     first_stop = itineraries[0]["stops"][0]
     session_id = session_store.create_session(
@@ -652,6 +688,8 @@ async def text_search(request: SearchRequest):
         travel_month=effective_month,
         parsed=parsed_query,
     )
+
+    itineraries = await _enrich_itineraries_with_tbo(itineraries, effective_budget, effective_month)
 
     if not itineraries:
         raise HTTPException(
