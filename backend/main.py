@@ -2398,8 +2398,14 @@ async def generate_packages(request: GeneratePackagesRequest):
     import asyncio
     
     real_flight_cost = 0
-    real_hotel_cost = 0
     tbo_called = False
+    
+    # Track the sum of tiered hotel prices across all selected destinations
+    real_hotel_tiers = {
+        "budget": 0,
+        "standard": 0,
+        "premium": 0
+    }
     
     if request.selections:
         per_stop_budget = base_budget // max(1, len(request.selections))
@@ -2413,24 +2419,34 @@ async def generate_packages(request: GeneratePackagesRequest):
                     tbo_called = True
                     real_flight_cost += tbo_data.get("flight_min_fare") or 0
                     
-                    hotels = tbo_data.get("hotels", [])
-                    if hotels:
-                        min_hp = min(h.get("price_per_night", 0) for h in hotels)
-                        real_hotel_cost += min_hp * 2 # Assume 2 nights baseline
+                    tiered_prices = tbo_data.get("tiered_hotel_prices", {})
+                    # For each destination, add the tiered price. If a specific tier is missing, 
+                    # we will fallback using the standard multiplier logic later
+                    real_hotel_tiers["budget"] += tiered_prices.get("budget") or 0
+                    real_hotel_tiers["standard"] += tiered_prices.get("standard") or 0
+                    real_hotel_tiers["premium"] += tiered_prices.get("premium") or 0
+                        
             except Exception as e:
                 logger.error(f"Error fetching TBO data for {stop_tbo_id}: {e}")
 
-    if tbo_called and (real_flight_cost > 0 or real_hotel_cost > 0):
-        base_flight_total = int(real_flight_cost) if real_flight_cost > 0 else int(base_budget * 0.3)
-        base_hotel_total = int(real_hotel_cost) if real_hotel_cost > 0 else int(base_budget * 0.4)
+    # Calculate baseline flight cost
+    if tbo_called and real_flight_cost > 0:
+        base_flight_total = int(real_flight_cost)
     else:
-        # Fallback to math estimations if TBO fails entirely or no valid stops
         base_flight_total = int(base_budget * 0.3)
+        
+    # Calculate baseline hotel total (standard)
+    if tbo_called and real_hotel_tiers["standard"] > 0:
+        base_hotel_total = int(real_hotel_tiers["standard"])
+    else:
+        # Fallback to math estimations if TBO fails entirely or no standard hotels exist
         base_hotel_total = int(base_budget * 0.4)
 
-    backpacker_hotel = int(base_hotel_total * 0.6)
+    # Calculate final tiered hotel costs with graceful fallback 
+    # if a specific tier was completely missing from the TBO response
+    backpacker_hotel = int(real_hotel_tiers["budget"]) if real_hotel_tiers["budget"] > 0 else int(base_hotel_total * 0.6)
     balanced_hotel = base_hotel_total
-    premium_hotel = int(base_hotel_total * 1.8)
+    premium_hotel = int(real_hotel_tiers["premium"]) if real_hotel_tiers["premium"] > 0 else int(base_hotel_total * 1.8)
     
     packages = [
         {

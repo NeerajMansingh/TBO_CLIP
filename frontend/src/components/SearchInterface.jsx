@@ -437,7 +437,7 @@ export default function SearchInterface({
                         <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
                             <Compass size={18} strokeWidth={2.5} />
                         </div>
-                        <span className="font-bold text-lg tracking-tight text-gray-900">Visionvoyage</span>
+                        <span className="font-bold text-lg tracking-tight text-gray-900">VisionVoyage</span>
                     </div>
 
                     <div className="flex items-center gap-4">

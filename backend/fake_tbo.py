@@ -1904,6 +1904,13 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
             logger.warning(f"TBO HotelDetails exception: {e}. Falling back to mock details.")
 
         final_hotels = []
+        # Track minimum prices per tier
+        tiered_min_prices = {
+            "budget": float("inf"),
+            "standard": float("inf"),
+            "premium": float("inf")
+        }
+        
         for vh in valid_hotels:
             code = str(vh["HotelCode"])
             details = hotel_map.get(code, {})
@@ -1948,6 +1955,24 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
                 "photo": image_url,
                 "description": description,
             })
+            
+            # Update tiered prices
+            price = vh["price_per_night"] * 2 # Price for 2 nights
+            if rating <= 3.5:
+                tiered_min_prices["budget"] = min(tiered_min_prices["budget"], price)
+            elif rating <= 4.5:
+                # Some 4.5 might be standard, but usually premium. Let's say <= 4.0 is standard
+                if rating <= 4.0:
+                    tiered_min_prices["standard"] = min(tiered_min_prices["standard"], price)
+                else:
+                    tiered_min_prices["premium"] = min(tiered_min_prices["premium"], price)
+            else:
+                tiered_min_prices["premium"] = min(tiered_min_prices["premium"], price)
+                
+        # Clean up infinities
+        tiered_hotel_prices = {
+            t: (p if p != float("inf") else None) for t, p in tiered_min_prices.items()
+        }
 
         # ── 4. Flight connectivity check (DEL -> Destination) ────────────────────
         flight_fares = {}
@@ -1962,6 +1987,7 @@ async def get_tbo_data(tbo_id: str, budget: int, travel_date_str: str = None) ->
                 "destination": dest_info["name"],
                 "price_per_person": min([h["price_per_night"] for h in valid_hotels], default=0) * 2,
                 "hotels": valid_hotels,
+                "tiered_hotel_prices": tiered_hotel_prices,
                 "flight_available_from_delhi": "DEL" in flight_fares,
                 "flight_min_fare": flight_fares.get("DEL"),
                 "hotel_price_date_label": hotel_price_date_label,  # None = +30d, str = fallback date
