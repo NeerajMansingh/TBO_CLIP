@@ -131,12 +131,126 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
     };
 
     const addActivity = (stopId, act) => {
+        // Calculate max capacity for this stop based on how buildDayPlan works
+        const numStops = itinerary.stops.length;
+        const baseDaysPerStop = Math.max(1, Math.floor(tripDays / Math.max(1, numStops)));
+
+        let remainingDays = tripDays;
+        let daysForStop = baseDaysPerStop;
+
+        itinerary.stops.forEach((stop, idx) => {
+            const isLast = idx === numStops - 1;
+            const stopDays = isLast ? remainingDays : Math.min(baseDaysPerStop, remainingDays);
+            if (stop.tbo_id === stopId) daysForStop = stopDays;
+            remainingDays -= stopDays;
+        });
+
+        const stopSelectedIds = selectedActivities[stopId] || [];
+
+        const isFirstStop = itinerary.stops[0].tbo_id === stopId;
+        const isLastStop = itinerary.stops[numStops - 1].tbo_id === stopId;
+
+        // Exact capacity check mimicking buildDayPlan
+        let exactCapacity = 0;
+        for (let d = 1; d <= daysForStop; d++) {
+            if (numStops === 1) {
+                if (d === 1) exactCapacity += 1;
+                else if (d === daysForStop) exactCapacity += 1;
+                else exactCapacity += 2;
+            } else {
+                if (d === 1 && isFirstStop) exactCapacity += 1;
+                else if (d === daysForStop && isLastStop) exactCapacity += 1;
+                else if (d === daysForStop && !isLastStop) exactCapacity += 1;
+                else exactCapacity += 2;
+            }
+        }
+
+        if (stopSelectedIds.length >= exactCapacity) {
+            alert(`Your itinerary for this city is full! Please increase the 'Duration' in Trip Settings to add more experiences.`);
+            return;
+        }
+
         setSelectedActivities(prev => {
             const current = prev[stopId] || [];
-            if (current.includes(act.id)) return prev;
+            if (current.includes(act.id)) return prev; // Already selected, do not charge!
+
+            // Only increase the price if we are actually adding the activity
+            setCurrentPkg(currPkg => ({ ...currPkg, activities_cost: currPkg.activities_cost + act.price, total_price: currPkg.total_price + act.price }));
+
             return { ...prev, [stopId]: [...current, act.id] };
         });
-        setCurrentPkg(prev => ({ ...prev, activities_cost: prev.activities_cost + act.price, total_price: prev.total_price + act.price }));
+    };
+
+    const handleDecreaseDuration = () => {
+        setTripDays((currentDays) => {
+            const newTripDays = Math.max(2, currentDays - 1);
+            if (newTripDays === currentDays) return currentDays; // Already at min
+
+            // Dry run the new stop capacities based on the new reduced duration
+            const numStops = itinerary.stops.length;
+            const baseDaysPerStop = Math.max(1, Math.floor(newTripDays / Math.max(1, numStops)));
+
+            let remainingDays = newTripDays;
+            const newCapacities = {}; // StopId -> NewExactCapacity
+
+            itinerary.stops.forEach((stop, idx) => {
+                const isFirstStop = idx === 0;
+                const isLastStop = idx === numStops - 1;
+
+                const stopDays = isLastStop ? remainingDays : Math.min(baseDaysPerStop, remainingDays);
+                remainingDays -= stopDays;
+
+                let exactCapacity = 0;
+                for (let d = 1; d <= stopDays; d++) {
+                    if (numStops === 1) {
+                        if (d === 1 || d === stopDays) exactCapacity += 1;
+                        else exactCapacity += 2;
+                    } else {
+                        if (d === 1 && isFirstStop) exactCapacity += 1;
+                        else if (d === stopDays && isLastStop) exactCapacity += 1;
+                        else if (d === stopDays && !isLastStop) exactCapacity += 1;
+                        else exactCapacity += 2;
+                    }
+                }
+                newCapacities[stop.tbo_id] = exactCapacity;
+            });
+
+            // Prune excess activities from selected state & adjust costs
+            setSelectedActivities((prevActivities) => {
+                let costToDeduct = 0;
+                const newActivities = { ...prevActivities };
+
+                for (const stopId of Object.keys(newActivities)) {
+                    const capacity = newCapacities[stopId] || 0;
+                    const stopSelectedIds = newActivities[stopId];
+                    if (stopSelectedIds.length > capacity) {
+                        // We must prune! We keep only the first N items up to capacity.
+                        const prunedIds = stopSelectedIds.slice(capacity);
+                        newActivities[stopId] = stopSelectedIds.slice(0, capacity);
+
+                        // Calculate refund for pruned items
+                        const stopActs = activitiesByStop[stopId] || [];
+                        prunedIds.forEach((prunedId) => {
+                            const actIdObj = stopActs.find((a) => a.id === prunedId);
+                            if (actIdObj) costToDeduct += actIdObj.price;
+                        });
+                    }
+                }
+
+                // If anything was pruned, update the global package price right now
+                if (costToDeduct > 0) {
+                    setCurrentPkg((currPkg) => ({
+                        ...currPkg,
+                        activities_cost: currPkg.activities_cost - costToDeduct,
+                        total_price: currPkg.total_price - costToDeduct,
+                    }));
+                }
+
+                return newActivities;
+            });
+
+            return newTripDays;
+        });
     };
 
     const getAvailableActivities = () => {
@@ -442,7 +556,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm font-bold text-slate-800">Duration</span>
                                         <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1 border border-slate-200">
-                                            <button onClick={() => setTripDays(d => Math.max(2, d - 1))} className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm border border-slate-200 text-xs font-bold hover:text-indigo-600">-</button>
+                                            <button onClick={handleDecreaseDuration} className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm border border-slate-200 text-xs font-bold hover:text-indigo-600">-</button>
                                             <span className="text-sm font-bold w-4 text-center text-slate-700">{tripDays}</span>
                                             <button onClick={() => setTripDays(d => Math.min(14, d + 1))} className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm border border-slate-200 text-xs font-bold hover:text-indigo-600">+</button>
                                         </div>
