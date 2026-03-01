@@ -107,49 +107,49 @@ _REGION_STOP_ORDER: dict[str, list[str]] = {
 
 ACTIVITIES_MAP: dict[str, list[dict]] = {
     "JAIPUR_FAKE_012": [
-        {"id": "Ac_JAI_01", "name": "Amer Fort Guided Tour", "price": 1200, "duration": "Half Day"},
-        {"id": "Ac_JAI_02", "name": "Hot Air Balloon Safari", "price": 8500, "duration": "Early Morning"},
-        {"id": "Ac_JAI_03", "name": "Chokhi Dhani Cultural Evening", "price": 2500, "duration": "Evening"},
-        {"id": "Ac_JAI_04", "name": "City Palace & Jantar Mantar", "price": 1000, "duration": "Half Day"},
-        {"id": "Ac_JAI_05", "name": "Shopping in Johari Bazaar", "price": 500, "duration": "2-3 Hours"},
+        {"id": "Ac_JAI_01", "name": "Amer Fort Guided Tour", "price": 1200, "duration": "Half Day", "description": "Explore the majestic Amer Fort with an expert guide. Walk through mirror-studded halls, secret passages, and enjoy panoramic views of Maota Lake and the Aravalli hills."},
+        {"id": "Ac_JAI_02", "name": "Hot Air Balloon Safari", "price": 8500, "duration": "Early Morning", "description": "Soar above the Pink City at sunrise in a hot air balloon. Watch Jaipur's forts and palaces glow golden as the sun rises over the desert landscape — a truly unforgettable experience."},
+        {"id": "Ac_JAI_03", "name": "Chokhi Dhani Cultural Evening", "price": 2500, "duration": "Evening", "description": "Immerse yourself in Rajasthani village culture with folk dances, puppet shows, camel rides, and an authentic multi-course Rajasthani thali dinner under the stars."},
+        {"id": "Ac_JAI_04", "name": "City Palace & Jantar Mantar", "price": 1000, "duration": "Half Day", "description": "Visit the stunning City Palace complex and the UNESCO-listed Jantar Mantar astronomical observatory. Marvel at centuries-old instruments that still tell accurate time."},
+        {"id": "Ac_JAI_05", "name": "Shopping in Johari Bazaar", "price": 500, "duration": "2-3 Hours", "description": "Wander through Jaipur's legendary jewellery market. Browse precious gemstones, handcrafted silver, traditional lac bangles, and block-printed textiles in vibrant lanes."},
     ],
     "UDAIPUR_FAKE_022": [
-        {"id": "Ac_UDR_01", "name": "Lake Pichola Sunset Cruise", "price": 1500, "duration": "2 Hours"},
-        {"id": "Ac_UDR_02", "name": "City Palace Guided Tour", "price": 800, "duration": "Half Day"},
-        {"id": "Ac_UDR_03", "name": "Sajjangarh Monsoon Palace", "price": 600, "duration": "3 Hours"},
-        {"id": "Ac_UDR_04", "name": "Ambrai Ghat Evening Walk", "price": 300, "duration": "Evening"},
-        {"id": "Ac_UDR_05", "name": "Vintage Car Museum", "price": 500, "duration": "1 Hour"},
+        {"id": "Ac_UDR_01", "name": "Lake Pichola Sunset Cruise", "price": 1500, "duration": "2 Hours", "description": "Glide across Lake Pichola as the sun sets behind the Aravalli hills. Pass the iconic Jag Mandir and Lake Palace, bathed in golden twilight — pure Udaipur magic."},
+        {"id": "Ac_UDR_02", "name": "City Palace Guided Tour", "price": 800, "duration": "Half Day", "description": "Discover Rajasthan's largest palace complex perched on the banks of Lake Pichola. Explore ornate courtyards, mosaic peacock art, and sweeping lake views from the balconies."},
+        {"id": "Ac_UDR_03", "name": "Sajjangarh Monsoon Palace", "price": 600, "duration": "3 Hours", "description": "Drive up to this hilltop palace built to watch monsoon clouds roll in. The panoramic sunset views over Udaipur's lake-dotted landscape are breathtaking."},
+        {"id": "Ac_UDR_04", "name": "Ambrai Ghat Evening Walk", "price": 300, "duration": "Evening", "description": "Stroll along the atmospheric Ambrai Ghat at dusk. Watch the City Palace and Jag Mandir light up across the water while soaking in Udaipur's romantic waterfront ambiance."},
+        {"id": "Ac_UDR_05", "name": "Vintage Car Museum", "price": 500, "duration": "1 Hour", "description": "Browse a curated collection of royal Rolls-Royces, Cadillacs, and Mercedes once owned by the Maharanas of Mewar — a fascinating peek into Udaipur's regal past."},
     ],
     "MYSORE_FAKE_015": [
-        {"id": "Ac_MYS_01", "name": "Mysore Palace Night Tour", "price": 1000, "duration": "Evening"},
-        {"id": "Ac_MYS_02", "name": "Chamundi Hill Climb", "price": 400, "duration": "Morning"},
-        {"id": "Ac_MYS_03", "name": "Silk Weaving Factory Visit", "price": 300, "duration": "2 Hours"},
-        {"id": "Ac_MYS_04", "name": "Brindavan Gardens Fountain Show", "price": 600, "duration": "Evening"},
+        {"id": "Ac_MYS_01", "name": "Mysore Palace Night Tour", "price": 1000, "duration": "Evening", "description": "Witness the Mysore Palace illuminated by nearly 100,000 light bulbs every Sunday evening. The Indo-Saracenic architecture glows like a jewel against the night sky."},
+        {"id": "Ac_MYS_02", "name": "Chamundi Hill Climb", "price": 400, "duration": "Morning", "description": "Climb 1,000 steps to the Chamundeshwari Temple atop Chamundi Hill. Pause at the massive Nandi Bull statue and enjoy sweeping views of Mysore city below."},
+        {"id": "Ac_MYS_03", "name": "Silk Weaving Factory Visit", "price": 300, "duration": "2 Hours", "description": "Watch artisans create the famous Mysore silk sarees on traditional looms. Learn about the centuries-old craft and pick up authentic silk pieces directly from the weavers."},
+        {"id": "Ac_MYS_04", "name": "Brindavan Gardens Fountain Show", "price": 600, "duration": "Evening", "description": "Experience the spectacular musical fountain show at Brindavan Gardens. Colourful water jets dance to music against a backdrop of terraced ornamental gardens."},
     ],
     "KOVALAM_FAKE_003": [
-        {"id": "Ac_TRV_01", "name": "Lighthouse Beach Walk", "price": 200, "duration": "Evening"},
-        {"id": "Ac_TRV_02", "name": "Ayurvedic Spa Massage", "price": 4500, "duration": "Half Day"},
-        {"id": "Ac_TRV_03", "name": "Sree Padmanabhaswamy Temple", "price": 1000, "duration": "2 Hours"},
-        {"id": "Ac_TRV_04", "name": "Backwater Canoe Ride", "price": 2500, "duration": "Half Day"},
+        {"id": "Ac_TRV_01", "name": "Lighthouse Beach Walk", "price": 200, "duration": "Evening", "description": "Take a relaxing evening walk along Kovalam's most iconic crescent beach. Climb the old lighthouse for stunning coastal views and watch fishermen return with the day's catch."},
+        {"id": "Ac_TRV_02", "name": "Ayurvedic Spa Massage", "price": 4500, "duration": "Half Day", "description": "Indulge in a traditional Kerala Ayurvedic spa experience. Skilled therapists use warm herbal oils and time-honoured techniques to rejuvenate your body and mind."},
+        {"id": "Ac_TRV_03", "name": "Sree Padmanabhaswamy Temple", "price": 1000, "duration": "2 Hours", "description": "Visit one of India's richest and most sacred temples, renowned for its Dravidian architecture. The massive reclining Vishnu idol and intricate stone carvings are awe-inspiring."},
+        {"id": "Ac_TRV_04", "name": "Backwater Canoe Ride", "price": 2500, "duration": "Half Day", "description": "Drift through narrow Kerala backwater canals in a traditional dugout canoe. Glide past coconut groves, village homes, and vibrant birdlife in total serenity."},
     ],
     "GOA_FAKE_001": [
-        {"id": "Ac_GOA_01", "name": "Dudhsagar Waterfalls Trek", "price": 3000, "duration": "Full Day"},
-        {"id": "Ac_GOA_02", "name": "Scuba Diving at Grand Island", "price": 4500, "duration": "Half Day"},
-        {"id": "Ac_GOA_03", "name": "Old Goa Churches Walk", "price": 800, "duration": "2 Hours"},
-        {"id": "Ac_GOA_04", "name": "Sunset Cruise on Mandovi", "price": 1200, "duration": "Evening"},
-        {"id": "Ac_GOA_05", "name": "Spice Plantation Tour", "price": 1500, "duration": "Half Day"},
+        {"id": "Ac_GOA_01", "name": "Dudhsagar Waterfalls Trek", "price": 3000, "duration": "Full Day", "description": "Trek through lush jungle trails to India's fifth-tallest waterfall. The milky-white cascade plunging 310 metres into an emerald pool is a jaw-dropping sight."},
+        {"id": "Ac_GOA_02", "name": "Scuba Diving at Grand Island", "price": 4500, "duration": "Half Day", "description": "Dive into the crystal-clear waters off Grand Island. Explore vibrant coral reefs, swim alongside tropical fish, and discover an underwater world just off Goa's coast."},
+        {"id": "Ac_GOA_03", "name": "Old Goa Churches Walk", "price": 800, "duration": "2 Hours", "description": "Walk through the UNESCO World Heritage churches of Old Goa. See the Basilica of Bom Jesus housing St. Francis Xavier's remains and the magnificent Sé Cathedral."},
+        {"id": "Ac_GOA_04", "name": "Sunset Cruise on Mandovi", "price": 1200, "duration": "Evening", "description": "Cruise the Mandovi River as the sky turns shades of orange and purple. Enjoy live Goan music, complimentary drinks, and views of Panjim's colourful waterfront."},
+        {"id": "Ac_GOA_05", "name": "Spice Plantation Tour", "price": 1500, "duration": "Half Day", "description": "Visit a working spice plantation in Goa's lush interior. Smell fresh cardamom, pepper, and vanilla, enjoy a traditional Goan lunch on banana leaves, and spot butterflies."},
     ],
     "ANDAMAN_FAKE_002": [
-        {"id": "Ac_IXZ_01", "name": "Havelock Scuba Diving", "price": 6000, "duration": "Half Day"},
-        {"id": "Ac_IXZ_02", "name": "Cellular Jail Sound & Light", "price": 800, "duration": "Evening"},
-        {"id": "Ac_IXZ_03", "name": "Ross Island Tour", "price": 1500, "duration": "Half Day"},
-        {"id": "Ac_IXZ_04", "name": "Sea Walk at North Bay", "price": 4000, "duration": "2 Hours"},
+        {"id": "Ac_IXZ_01", "name": "Havelock Scuba Diving", "price": 6000, "duration": "Half Day", "description": "Dive into the pristine waters around Havelock Island. Explore coral gardens teeming with clownfish, parrotfish, and sea turtles in one of Asia's best dive sites."},
+        {"id": "Ac_IXZ_02", "name": "Cellular Jail Sound & Light", "price": 800, "duration": "Evening", "description": "Relive India's freedom struggle through a powerful sound and light show at the historic Cellular Jail. The dramatic narration brings the stories of imprisoned revolutionaries to life."},
+        {"id": "Ac_IXZ_03", "name": "Ross Island Tour", "price": 1500, "duration": "Half Day", "description": "Explore the hauntingly beautiful ruins of the former British administrative headquarters. Nature has reclaimed the colonial buildings, creating an atmospheric and photogenic landscape."},
+        {"id": "Ac_IXZ_04", "name": "Sea Walk at North Bay", "price": 4000, "duration": "2 Hours", "description": "Walk on the ocean floor wearing a special helmet that lets you breathe underwater. Get face-to-face with colourful marine life without any diving experience needed."},
     ],
     "PONDICHERRY_FAKE_005": [
-        {"id": "Ac_PNY_01", "name": "Auroville Matrimandir Visit", "price": 500, "duration": "Half Day"},
-        {"id": "Ac_PNY_02", "name": "French Quarter Heritage Walk", "price": 800, "duration": "2 Hours"},
-        {"id": "Ac_PNY_03", "name": "Paradise Beach Ferry & Chill", "price": 1000, "duration": "Half Day"},
-        {"id": "Ac_PNY_04", "name": "Surfing Lesson at Serenity Beach", "price": 2500, "duration": "2 Hours"},
+        {"id": "Ac_PNY_01", "name": "Auroville Matrimandir Visit", "price": 500, "duration": "Half Day", "description": "Visit the golden globe of Matrimandir, the spiritual heart of Auroville. Walk through the peaceful gardens and learn about this unique international township experiment."},
+        {"id": "Ac_PNY_02", "name": "French Quarter Heritage Walk", "price": 800, "duration": "2 Hours", "description": "Stroll through Pondicherry's charming Ville Blanche with its pastel-coloured colonial buildings, bougainvillea-draped streets, and quaint French cafés."},
+        {"id": "Ac_PNY_03", "name": "Paradise Beach Ferry & Chill", "price": 1000, "duration": "Half Day", "description": "Take a short boat ride to the secluded Paradise Beach. Relax on golden sands fringed by casuarina trees, swim in calm waters, and enjoy fresh seafood by the shore."},
+        {"id": "Ac_PNY_04", "name": "Surfing Lesson at Serenity Beach", "price": 2500, "duration": "2 Hours", "description": "Catch your first wave at Serenity Beach with professional instructors. This beginner-friendly spot has consistent swells and a laid-back surf culture vibe."},
     ],
 }
 
@@ -165,11 +165,11 @@ def get_activities_for_destination(tbo_id: str) -> list[dict]:
     # Generic fallback
     name = dest["name"]
     return [
-        {"id": f"Ac_{tbo_id}_01", "name": f"Highlights Tour of {name}", "price": 1500, "duration": "Half Day"},
-        {"id": f"Ac_{tbo_id}_02", "name": f"Local Cuisine Tasting", "price": 2000, "duration": "Evening"},
-        {"id": f"Ac_{tbo_id}_03", "name": f"Sunset Viewpoint Visit", "price": 800, "duration": "2 Hours"},
-        {"id": f"Ac_{tbo_id}_04", "name": f"Heritage Walk in {name}", "price": 1200, "duration": "Half Day"},
-        {"id": f"Ac_{tbo_id}_05", "name": f"Full Day Private Explorer", "price": 5000, "duration": "Full Day"},
+        {"id": f"Ac_{tbo_id}_01", "name": f"Highlights Tour of {name}", "price": 1500, "duration": "Half Day", "description": f"Discover the most iconic landmarks and hidden gems of {name} with a knowledgeable local guide who brings the city's story alive."},
+        {"id": f"Ac_{tbo_id}_02", "name": f"Local Cuisine Tasting", "price": 2000, "duration": "Evening", "description": f"Savour the authentic flavours of {name} on a guided food trail. Sample street delicacies, traditional dishes, and local sweets at handpicked eateries."},
+        {"id": f"Ac_{tbo_id}_03", "name": f"Sunset Viewpoint Visit", "price": 800, "duration": "2 Hours", "description": f"Head to the best sunset spot in {name} for golden-hour views you'll never forget. Perfect for photography and quiet reflection."},
+        {"id": f"Ac_{tbo_id}_04", "name": f"Heritage Walk in {name}", "price": 1200, "duration": "Half Day", "description": f"Walk through the historic heart of {name}, exploring ancient architecture, vibrant markets, and cultural landmarks with expert commentary."},
+        {"id": f"Ac_{tbo_id}_05", "name": f"Full Day Private Explorer", "price": 5000, "duration": "Full Day", "description": f"A fully customisable private day tour of {name}. Your personal guide tailors the itinerary to your interests — temples, nature, or local culture."},
     ]
 
 

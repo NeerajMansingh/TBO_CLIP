@@ -16,6 +16,12 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
     const [selectedActivities, setSelectedActivities] = useState({});
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
+    const [activeTab, setActiveTab] = useState(0);
+
+    // Filter to only stops that have activities loaded
+    const stopsWithActivities = itinerary.stops.filter(
+        (stop) => (activitiesByStop[stop.tbo_id] || []).length > 0
+    );
 
     useEffect(() => {
         const fetchActivities = async () => {
@@ -95,6 +101,10 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
         );
     }
 
+    const currentStop = stopsWithActivities[activeTab];
+    const currentActs = currentStop ? (activitiesByStop[currentStop.tbo_id] || []) : [];
+    const currentSelected = currentStop ? (selectedActivities[currentStop.tbo_id] || []) : [];
+
     return (
         <div className="min-h-screen bg-[#F9FAFB] pb-40 font-sans selection:bg-indigo-500/30 text-gray-900">
 
@@ -117,8 +127,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
             </nav>
 
             {/* Main Content Area */}
-            <div className="max-w-7xl mx-auto pt-32 px-6">
-                <div className="max-w-2xl mb-16">
+            <div className="max-w-4xl mx-auto pt-32 px-6">
+                <div className="max-w-2xl mb-12">
                     <h1 className="text-5xl md:text-6xl font-black text-gray-900 mb-6 tracking-tight leading-[1.1]">
                         Build your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600">narrative.</span>
                     </h1>
@@ -127,76 +137,130 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                     </p>
                 </div>
 
-                <div className="space-y-24">
-                    {itinerary.stops.map((stop, i) => {
-                        const acts = activitiesByStop[stop.tbo_id] || [];
-                        const selected = selectedActivities[stop.tbo_id] || [];
-                        if (acts.length === 0) return null;
+                {/* City Tabs */}
+                {stopsWithActivities.length > 1 && (
+                    <div className="flex items-center gap-2 mb-10">
+                        {stopsWithActivities.map((stop, i) => {
+                            const stopSelected = (selectedActivities[stop.tbo_id] || []).length;
+                            const isActive = activeTab === i;
+                            return (
+                                <button
+                                    key={stop.tbo_id}
+                                    onClick={() => setActiveTab(i)}
+                                    className={`relative px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 cursor-pointer ${isActive
+                                            ? 'bg-gray-900 text-white shadow-lg shadow-gray-900/20'
+                                            : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        }`}
+                                >
+                                    {stop.destination}
+                                    {stopSelected > 0 && (
+                                        <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${isActive ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-600'
+                                            }`}>
+                                            {stopSelected}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Single-city header when only one stop */}
+                {stopsWithActivities.length === 1 && currentStop && (
+                    <div className="flex items-baseline gap-4 mb-10 border-b border-gray-200 pb-4">
+                        <span className="text-4xl font-black text-gray-200 tracking-tighter">01</span>
+                        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">{currentStop.destination}</h2>
+                    </div>
+                )}
+
+                {/* Horizontal Activity Cards */}
+                <div className="space-y-4">
+                    {currentActs.map((act, idx) => {
+                        const isSelected = currentSelected.includes(act.id);
+                        const bgImg = ACTIVITY_IMAGES[idx % ACTIVITY_IMAGES.length];
 
                         return (
-                            <div key={stop.tbo_id} className="relative">
-                                {/* Minimalist City Header */}
-                                <div className="flex items-baseline gap-4 mb-10 border-b border-gray-200 pb-4">
-                                    <span className="text-4xl font-black text-gray-200 tracking-tighter">0{i + 1}</span>
-                                    <h2 className="text-3xl font-bold text-gray-900 tracking-tight">{stop.destination}</h2>
+                            <div
+                                key={act.id}
+                                onClick={() => toggleActivity(currentStop.tbo_id, act.id)}
+                                className={`group relative flex rounded-2xl overflow-hidden cursor-pointer transition-all duration-400 ease-out bg-white border ${isSelected
+                                        ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#F9FAFB] border-indigo-200 shadow-[0_8px_30px_-10px_rgba(99,102,241,0.25)]'
+                                        : 'border-gray-200 hover:border-gray-300 hover:shadow-[0_8px_30px_-10px_rgba(0,0,0,0.08)]'
+                                    }`}
+                            >
+                                {/* Left: Image */}
+                                <div className="relative w-48 min-h-[180px] flex-shrink-0 overflow-hidden">
+                                    <img
+                                        src={bgImg}
+                                        alt={act.name}
+                                        className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out ${isSelected ? 'scale-105' : 'group-hover:scale-110'
+                                            }`}
+                                    />
+                                    {/* Subtle overlay */}
+                                    <div className={`absolute inset-0 transition-opacity duration-500 ${isSelected
+                                            ? 'bg-indigo-900/20'
+                                            : 'bg-gray-900/5 group-hover:bg-gray-900/10'
+                                        }`}></div>
+
+                                    {/* Check indicator overlay */}
+                                    {isSelected && (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="bg-indigo-500 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg animate-[bounce-in_0.4s_cubic-bezier(0.175,0.885,0.32,1.275)]">
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Modern Grid Layout */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    {acts.map((act, idx) => {
-                                        const isSelected = selected.includes(act.id);
-                                        const bgImg = ACTIVITY_IMAGES[idx % ACTIVITY_IMAGES.length];
+                                {/* Right: Content */}
+                                <div className="flex-1 p-5 flex flex-col justify-between min-w-0">
+                                    <div>
+                                        {/* Top row: Duration + Price */}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-500">
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                {act.duration}
+                                            </span>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-bold transition-colors duration-300 ${isSelected
+                                                    ? 'bg-indigo-500 text-white'
+                                                    : 'bg-gray-100 text-gray-700 group-hover:bg-gray-200'
+                                                }`}>
+                                                ₹{act.price.toLocaleString()}
+                                            </span>
+                                        </div>
 
-                                        return (
-                                            <div
-                                                key={act.id}
-                                                onClick={() => toggleActivity(stop.tbo_id, act.id)}
-                                                className={`group relative h-[340px] w-full rounded-3xl overflow-hidden cursor-pointer transform transition-all duration-500 ease-out ${isSelected
-                                                        ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-[#F9FAFB] scale-[1.02] shadow-[0_20px_40px_-15px_rgba(99,102,241,0.3)]'
-                                                        : 'hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] shadow-sm'
-                                                    }`}
-                                            >
-                                                {/* Background Image with Parallax-ish zoom */}
-                                                <img
-                                                    src={bgImg}
-                                                    alt={act.name}
-                                                    className={`absolute inset-0 w-full h-full object-cover transition-transform duration-[1.5s] ease-out ${isSelected ? 'scale-105' : 'group-hover:scale-110'}`}
-                                                />
+                                        {/* Activity Name */}
+                                        <h3 className="text-lg font-bold text-gray-900 mb-2 leading-snug">
+                                            {act.name}
+                                        </h3>
 
-                                                {/* Rich Dark Gradient Overlay */}
-                                                <div className={`absolute inset-0 transition-opacity duration-500 ${isSelected ? 'bg-gradient-to-t from-gray-900 via-gray-900/40 to-indigo-900/20 opacity-90' : 'bg-gradient-to-t from-gray-900/90 via-gray-900/20 to-transparent opacity-80 group-hover:opacity-100'}`}></div>
+                                        {/* Description */}
+                                        <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">
+                                            {act.description || `Experience ${act.name} — a curated activity designed to immerse you in the local culture and create lasting memories.`}
+                                        </p>
+                                    </div>
 
-                                                {/* Top Right Floating Badge */}
-                                                <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
-                                                    <div className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5">
-                                                        <span>₹{act.price}</span>
-                                                    </div>
-
-                                                    {/* Animated Checkmark Bubble */}
-                                                    {isSelected && (
-                                                        <div className="bg-indigo-500 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg transform transition-transform animate-[bounce-in_0.4s_cubic-bezier(0.175,0.885,0.32,1.275)]">
-                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Sleek Content Panel at Bottom */}
-                                                <div className="absolute bottom-0 inset-x-0 p-6 z-10 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500 ease-out flex flex-col justify-end">
-                                                    <p className="text-indigo-300 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                        </svg>
-                                                        {act.duration}
-                                                    </p>
-                                                    <h3 className="text-xl font-bold text-white leading-tight drop-shadow-md">
-                                                        {act.name}
-                                                    </h3>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                    {/* Bottom action hint */}
+                                    <div className="mt-3 flex items-center justify-between">
+                                        <span className={`text-xs font-medium transition-colors duration-300 ${isSelected ? 'text-indigo-500' : 'text-gray-400 group-hover:text-gray-500'
+                                            }`}>
+                                            {isSelected ? '✓ Added to your trip' : 'Click to add'}
+                                        </span>
+                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${isSelected
+                                                ? 'bg-indigo-500 border-indigo-500'
+                                                : 'border-gray-300 group-hover:border-gray-400'
+                                            }`}>
+                                            {isSelected && (
+                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -218,7 +282,6 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
 
                         <div className="flex -space-x-4">
                             {allSelectedActs.slice(0, 4).map((act, idx) => {
-                                // Try to match the image used for this activity by finding its index. This is a hacky fallback but looks great.
                                 const bgImg = ACTIVITY_IMAGES[Math.floor(Math.random() * ACTIVITY_IMAGES.length)];
                                 return (
                                     <div key={idx} className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white overflow-hidden bg-gray-200 shadow-md relative z-[1]">
