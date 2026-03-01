@@ -1,147 +1,196 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Zap, Lock } from 'lucide-react';
 
-export default function ChatWindow({ messages, isTyping, onSend }) {
-    const [input, setInput] = useState('')
-    const bottomRef = useRef(null)
-    const inputRef = useRef(null)
+const QUICK_REPLIES = [
+    "What's the best hotel option?",
+    "Tell me more about this destination",
+    "What's the total cost breakdown?",
+    "Best time activities here?",
+    "I want to change destination",
+    "I'm ready to book",
+];
+
+function TypingIndicator() {
+    return (
+        <div className="flex gap-1 items-center px-4 py-3">
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+        </div>
+    );
+}
+
+function ActionCard({ action, onApply }) {
+    const labels = {
+        reorder_stops: '🔄 Route Reorder Suggested',
+        change_transport: '✈️ Transport Change Suggested',
+        adjust_days: '📅 Day Allocation Suggested',
+    };
+    if (!labels[action]) return null;
+    return (
+        <div className="chat-action-card mt-2">
+            <p className="text-xs font-semibold text-blue-700 mb-2">{labels[action]}</p>
+            <button onClick={onApply} className="btn-primary text-xs px-4 py-2">
+                Apply <Zap size={11} />
+            </button>
+        </div>
+    );
+}
+
+export default function ChatWindow({ messages, isTyping, onSend, onConfirm, isPopup = false, actionApplied, onApplyAction }) {
+    const [inputText, setInputText] = useState('');
+    const [pendingSend, setPendingSend] = useState(false);  // queued send while AI is typing
+    const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages, isTyping])
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages, isTyping]);
 
-    const handleSubmit = (e) => {
-        e?.preventDefault()
-        const text = input.trim()
-        if (!text || isTyping) return
-        setInput('')
-        onSend(text)
-        inputRef.current?.focus()
-    }
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            handleSubmit()
+    // When AI finishes typing, if we had a pending send fire it
+    useEffect(() => {
+        if (!isTyping && pendingSend && inputText.trim()) {
+            setPendingSend(false);
+            const text = inputText.trim();
+            setInputText('');
+            onSend(text);
         }
-    }
+    }, [isTyping, pendingSend, inputText, onSend]);
+
+    const handleSend = useCallback(() => {
+        if (!inputText.trim()) return;
+        if (isTyping) {
+            // Queue: mark as pending, will fire when AI is done
+            setPendingSend(true);
+            return;
+        }
+        const text = inputText.trim();
+        setInputText('');
+        onSend(text);
+    }, [inputText, isTyping, onSend]);
+
+    const handleKeyDown = useCallback((e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    }, [handleSend]);
+
+    const isLocked = isTyping; // input is visually locked while AI responds
 
     return (
-        <div className="flex flex-col h-full min-h-[60vh] lg:min-h-0">
-            {/* Header */}
-            <div className="px-5 py-4 border-b border-white/8 flex items-center gap-3 shrink-0">
-                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse-soft" />
-                <div>
-                    <p className="text-sm font-semibold text-white">VibeTravel AI</p>
-                    <p className="text-xs text-white/40">Powered by Gemini · Ask anything</p>
+        <div className={`flex flex-col h-full ${isPopup ? 'bg-white' : 'bg-white border-r border-gray-100'}`}>
+            {/* Chat header */}
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
+                    <span className="text-white text-sm">✨</span>
                 </div>
-                <div className="ml-auto">
-                    <span className="text-xs text-white/30 bg-white/5 px-2 py-1 rounded-lg border border-white/10">
-                        💬 {messages.length} messages
-                    </span>
+                <div className="flex-1">
+                    <p className="text-sm font-bold text-gray-900">AI Travel Planner</p>
+                    <p className="text-[11px] flex items-center gap-1">
+                        {isTyping ? (
+                            <><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
+                                <span className="text-amber-600 font-medium">Thinking…</span></>
+                        ) : (
+                            <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                                <span className="text-emerald-600">Ready</span></>
+                        )}
+                    </p>
                 </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
-                {messages.map((msg) => (
-                    <MessageBubble key={msg.id} msg={msg} />
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-hide">
+                {messages.map((msg, i) => (
+                    <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`}>
+                        {msg.role === 'assistant' && (
+                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center mr-2 flex-none self-end mb-1">
+                                <span className="text-xs">✨</span>
+                            </div>
+                        )}
+                        <div>
+                            <div className={msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>
+                                {msg.content}
+                            </div>
+                            {msg.role === 'assistant' && actionApplied && i === messages.length - 1 && (
+                                <ActionCard action={actionApplied.type} onApply={onApplyAction} />
+                            )}
+                        </div>
+                    </div>
                 ))}
-
-                {isTyping && <TypingIndicator />}
-                <div ref={bottomRef} />
+                {isTyping && (
+                    <div className="flex items-end gap-2">
+                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-none">
+                            <span className="text-xs">✨</span>
+                        </div>
+                        <div className="chat-bubble-ai px-3">
+                            <TypingIndicator />
+                        </div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} />
             </div>
 
-            {/* Quick reply chips */}
-            <QuickReplies onSelect={(text) => { setInput(text); inputRef.current?.focus() }} />
-
-            {/* Input bar */}
-            <form
-                onSubmit={handleSubmit}
-                className="px-4 py-4 border-t border-white/8 flex gap-3 items-end shrink-0"
-            >
-                <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                    placeholder="Type a message… (Enter to send)"
-                    className="flex-1 resize-none bg-white/8 border border-white/15 rounded-xl px-4 py-3
-                     text-white text-sm placeholder-white/35
-                     focus:outline-none focus:border-brand-400/60 focus:ring-1 focus:ring-brand-400/20
-                     transition-all duration-200 max-h-32"
-                    style={{ fieldSizing: 'content' }}
-                />
-                <button
-                    type="submit"
-                    disabled={!input.trim() || isTyping}
-                    id="send-message-btn"
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200
-            ${input.trim() && !isTyping
-                            ? 'bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-lg shadow-brand-500/30 hover:shadow-brand-500/50 hover:scale-105 active:scale-95'
-                            : 'bg-white/8 text-white/25 cursor-not-allowed'
-                        }`}
-                >
-                    <svg className="w-5 h-5 rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                </button>
-            </form>
-        </div>
-    )
-}
-
-function MessageBubble({ msg }) {
-    const isUser = msg.role === 'user'
-    return (
-        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}>
-            {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-orange-500 flex items-center justify-center shrink-0 mr-2.5 mt-0.5 text-xs font-bold shadow-md shadow-brand-500/30">
-                    ✈
+            {/* Quick replies — only show contextually, not while typing */}
+            {!isPopup && !isTyping && (
+                <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+                    {QUICK_REPLIES.slice(0, 4).map(qr => (
+                        <button
+                            key={qr}
+                            onClick={() => {
+                                setInputText(qr);
+                                setTimeout(() => inputRef.current?.focus(), 50);
+                            }}
+                            className="text-[11px] bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-gray-600 px-3 py-1.5 rounded-full transition-colors"
+                        >
+                            {qr}
+                        </button>
+                    ))}
                 </div>
             )}
-            <div className={isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}>
-                {msg.content}
+
+            {/* Input */}
+            <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+                <div className={`flex gap-2 transition-opacity ${isLocked && !pendingSend ? 'opacity-60' : ''}`}>
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={inputText}
+                        onChange={e => setInputText(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={isTyping
+                            ? pendingSend
+                                ? "Message queued — will send when AI finishes…"
+                                : "AI is thinking… type your next message"
+                            : "Ask me about this trip…"}
+                        className="input-clean flex-1 text-sm py-2.5"
+                    />
+                    <button
+                        onClick={handleSend}
+                        disabled={!inputText.trim()}
+                        title={isTyping ? "Will send after AI finishes responding" : "Send"}
+                        className={`px-4 py-2.5 flex-none rounded-xl transition-all disabled:opacity-40 ${pendingSend
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : 'btn-primary'
+                            }`}
+                    >
+                        {pendingSend ? <Lock size={16} /> : <Send size={16} />}
+                    </button>
+                </div>
+                {pendingSend && (
+                    <p className="text-[10px] text-amber-600 font-medium mt-1.5 flex items-center gap-1">
+                        ⏳ Message queued — will send when the AI finishes responding
+                    </p>
+                )}
+                {onConfirm && (
+                    <button
+                        onClick={onConfirm}
+                        className="w-full mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl py-2 transition-colors"
+                    >
+                        ✓ Confirm & Book This Itinerary
+                    </button>
+                )}
             </div>
         </div>
-    )
-}
-
-function TypingIndicator() {
-    return (
-        <div className="flex items-start gap-2.5 animate-fade-in">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-orange-500 flex items-center justify-center shrink-0 text-xs font-bold shadow-md shadow-brand-500/30">
-                ✈
-            </div>
-            <div className="chat-bubble-ai flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-white/50 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-white/50 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-white/50 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-        </div>
-    )
-}
-
-const QUICK_REPLIES = [
-    "I want something more mountainous",
-    "I prefer beach destinations",
-    "Not too touristy please",
-    "This looks perfect!",
-    "Can we go somewhere romantic?",
-]
-
-function QuickReplies({ onSelect }) {
-    return (
-        <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
-            {QUICK_REPLIES.map(q => (
-                <button
-                    key={q}
-                    onClick={() => onSelect(q)}
-                    className="shrink-0 px-3 py-1.5 rounded-full text-xs border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white hover:border-white/25 transition-all duration-150 whitespace-nowrap"
-                >
-                    {q}
-                </button>
-            ))}
-        </div>
-    )
+    );
 }

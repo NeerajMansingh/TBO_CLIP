@@ -56,8 +56,8 @@ export default function LoadingScreen({ uploadedPhoto }) {
 
             <div className="relative w-full max-w-md">
                 {/* App name */}
-                <div className="text-center mb-10 animate-fade-in">
-                    <p className="text-white/40 text-sm uppercase tracking-widest font-medium">✈️ VibeTravel</p>
+                <div className="mt-16 animate-pulse">
+                    <p className="text-white/40 text-sm uppercase tracking-widest font-medium">✈️ VisionVoyage</p>
                 </div>
 
                 {/* Photo preview if available */}
@@ -85,10 +85,10 @@ export default function LoadingScreen({ uploadedPhoto }) {
                             <div
                                 key={i}
                                 className={`card p-4 transition-all duration-500 ${isActive
-                                        ? 'border-brand-400/40 bg-brand-500/8'
-                                        : isCompleted
-                                            ? 'border-green-500/30 bg-green-500/5'
-                                            : 'opacity-40'
+                                    ? 'border-brand-400/40 bg-brand-500/8'
+                                    : isCompleted
+                                        ? 'border-green-500/30 bg-green-500/5'
+                                        : 'opacity-40'
                                     }`}
                                 style={{
                                     animation: isActive || isCompleted ? 'fadeIn 0.4s ease-out forwards' : 'none',
@@ -97,10 +97,10 @@ export default function LoadingScreen({ uploadedPhoto }) {
                                 <div className="flex items-center gap-4">
                                     {/* Icon / spinner / check */}
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${isCompleted
-                                            ? 'bg-green-500/20'
-                                            : isActive
-                                                ? 'bg-brand-500/20'
-                                                : 'bg-white/5'
+                                        ? 'bg-green-500/20'
+                                        : isActive
+                                            ? 'bg-brand-500/20'
+                                            : 'bg-white/5'
                                         }`}>
                                         {isCompleted ? (
                                             <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

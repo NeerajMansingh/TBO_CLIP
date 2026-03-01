@@ -168,3 +168,15 @@ def query_similar_destinations(
 def get_collection_count() -> int:
     """Return the number of destinations in the collection."""
     return get_collection().count()
+
+
+def get_destination_by_id(tbo_id: str) -> Optional[dict]:
+    """Fetch a destination's metadata from ChromaDB by its TBO ID."""
+    try:
+        collection = get_collection()
+        results = collection.get(ids=[tbo_id], include=["metadatas"])
+        if results and results.get("metadatas") and len(results["metadatas"]) > 0:
+            return results["metadatas"][0]
+    except Exception as e:
+        logger.error(f"Failed to fetch destination by id {tbo_id}: {e}")
+    return None

@@ -63,7 +63,7 @@ export default function UploadScreen({ onFindMatch }) {
                 <div className="text-center mb-10">
                     <div className="inline-flex items-center gap-2 mb-4">
                         <span className="text-3xl">✈️</span>
-                        <h1 className="font-display text-4xl font-bold text-gradient">VibeTravel</h1>
+                        <h1 className="font-display text-4xl font-bold text-gradient">VisionVoyage</h1>
                     </div>
                     <p className="text-white/60 text-base leading-relaxed max-w-sm mx-auto">
                         Upload your dream destination photo.{' '}

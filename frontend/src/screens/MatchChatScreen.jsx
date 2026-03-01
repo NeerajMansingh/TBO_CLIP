@@ -10,6 +10,7 @@ export default function MatchChatScreen({ matchData, uploadedPhoto, onSendMessag
         reasons: matchData.match_reasons,
         hotels: matchData.hotels,
         tagline: matchData.tagline || '',
+        stops: matchData.stops || []
     })
     const [messages, setMessages] = useState([
         { role: 'assistant', content: matchData.conversation_opener, id: 'opener' }
@@ -41,6 +42,7 @@ export default function MatchChatScreen({ matchData, uploadedPhoto, onSendMessag
                         reasons: m.match_reasons,
                         hotels: m.hotels,
                         tagline: m.tagline || '',
+                        stops: m.stops || []
                     })
                     setIsUpdatingMatch(false)
                 }, 400)
