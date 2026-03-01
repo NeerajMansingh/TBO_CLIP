@@ -283,8 +283,8 @@ async def _enrich_itineraries_with_tbo(itineraries: list, budget: int, travel_da
             return
             
         try:
-            # We use an 8-second timeout so we don't block the search response forever
-            tbo_data = await asyncio.wait_for(get_tbo_data(tbo_id, budget, travel_dates), timeout=8.0)
+            # We use a 30-second timeout to allow CityList + Hotel Search + Details to complete
+            tbo_data = await asyncio.wait_for(get_tbo_data(tbo_id, budget, travel_dates), timeout=30.0)
             if tbo_data is not None:
                 if tbo_data.get("price_per_person"):
                     stop["price_per_person"] = tbo_data["price_per_person"]
