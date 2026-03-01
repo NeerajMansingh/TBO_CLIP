@@ -1,17 +1,27 @@
 import { useState, useEffect } from "react";
 
-const ACTIVITY_IMAGES = [
-    "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1533750349088-cd871a92f312?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1499696010180-025ef6e1a8f9?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1530789253388-582c481c54b0?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800&auto=format&fit=crop"
-];
-
 const TIME_SLOTS = ["Morning", "Afternoon", "Evening"];
+
+const getImageForActivity = (act) => {
+    const name = act.name.toLowerCase();
+    let keyword = "india"; // default
+
+    if (name.includes('food') || name.includes('tasting') || name.includes('cuisine') || name.includes('eat') || name.includes('dinner') || name.includes('market')) {
+        keyword = "food,plating";
+    } else if (name.includes('boat') || name.includes('cruise') || name.includes('lake') || name.includes('river') || name.includes('beach') || name.includes('mangrove') || name.includes('backwater')) {
+        keyword = "boat,lake";
+    } else if (name.includes('nature') || name.includes('hike') || name.includes('trek') || name.includes('jungle') || name.includes('safari') || name.includes('mountain') || name.includes('valley')) {
+        keyword = "forest,safari";
+    } else if (name.includes('temple') || name.includes('heritage') || name.includes('culture') || name.includes('museum') || name.includes('fort') || name.includes('palace') || name.includes('monument')) {
+        keyword = "temple,india";
+    }
+
+    // Use a hash of the activity ID to consistently pick the same image from the category
+    const idHash = (act.id || "1").split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const lockId = (idHash % 1000) + 1; // LoremFlickr lock needs a positive integer
+
+    return `https://loremflickr.com/800/600/${keyword}?lock=${lockId}`;
+};
 
 export default function PackageDetails({ pkg, itinerary, initialSelectedActivities, sessionId, apiBase, onBack, onConfirm }) {
     const [selectedActivities, setSelectedActivities] = useState(initialSelectedActivities || {});
@@ -259,8 +269,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                     }
 
                                                     // Activity event
-                                                    const actImgIdx = (activitiesByStop[evt.stopId] || []).findIndex(a => a.id === evt.id);
-                                                    const bgImg = ACTIVITY_IMAGES[(actImgIdx >= 0 ? actImgIdx : eIdx) % ACTIVITY_IMAGES.length];
+                                                    const bgImg = getImageForActivity(evt);
                                                     const isSwapOpen = swapMenuOpen?.stopId === evt.stopId && swapMenuOpen?.actId === evt.id;
                                                     const alternatives = (activitiesByStop[evt.stopId] || []).filter(
                                                         a => !(selectedActivities[evt.stopId] || []).includes(a.id)
@@ -300,8 +309,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                         <button
                                                                             onClick={() => setSwapMenuOpen(isSwapOpen ? null : { stopId: evt.stopId, actId: evt.id })}
                                                                             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isSwapOpen
-                                                                                    ? 'bg-indigo-100 text-indigo-600'
-                                                                                    : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-500'
+                                                                                ? 'bg-indigo-100 text-indigo-600'
+                                                                                : 'bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-500'
                                                                                 }`}
                                                                             title="Replace activity"
                                                                         >
@@ -337,7 +346,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                     <div className="max-h-64 overflow-y-auto">
                                                                         {alternatives.map((alt, altIdx) => {
                                                                             const diff = alt.price - evt.price;
-                                                                            const altImg = ACTIVITY_IMAGES[altIdx % ACTIVITY_IMAGES.length];
+                                                                            const altImg = getImageForActivity(alt);
                                                                             return (
                                                                                 <button
                                                                                     key={alt.id}
@@ -529,7 +538,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {availableActivities.map((act) => {
-                                const bgImg = ACTIVITY_IMAGES[act.imgIdx % ACTIVITY_IMAGES.length];
+                                const bgImg = getImageForActivity(act);
 
                                 return (
                                     <div
