@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const ACTIVITY_IMAGES = [
-    "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1533750349088-cd871a92f312?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1499696010180-025ef6e1a8f9?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1530789253388-582c481c54b0?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=800&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800&auto=format&fit=crop"
-];
+// From kiran3rd: context-aware image selection based on activity name keywords
+const getImageForActivity = (act) => {
+    const name = act.name.toLowerCase();
+    let keyword = "india";
+
+    if (name.includes('food') || name.includes('tasting') || name.includes('cuisine') || name.includes('eat') || name.includes('dinner') || name.includes('market')) {
+        keyword = "food,plating";
+    } else if (name.includes('boat') || name.includes('cruise') || name.includes('lake') || name.includes('river') || name.includes('beach') || name.includes('mangrove') || name.includes('backwater')) {
+        keyword = "boat,lake";
+    } else if (name.includes('nature') || name.includes('hike') || name.includes('trek') || name.includes('jungle') || name.includes('safari') || name.includes('mountain') || name.includes('valley')) {
+        keyword = "forest,safari";
+    } else if (name.includes('temple') || name.includes('heritage') || name.includes('culture') || name.includes('museum') || name.includes('fort') || name.includes('palace') || name.includes('monument')) {
+        keyword = "temple,india";
+    }
+
+    const idHash = (act.id || "1").split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const lockId = (idHash % 1000) + 1;
+    return `https://loremflickr.com/800/600/${keyword}?lock=${lockId}`;
+};
 
 export default function PackageDetails({ pkg, itinerary, initialSelectedActivities, sessionId, apiBase, onBack, onConfirm }) {
     const [selectedActivities, setSelectedActivities] = useState(initialSelectedActivities || {});
@@ -19,7 +28,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
     const [currentPkg, setCurrentPkg] = useState(pkg);
     const [swapMenuOpen, setSwapMenuOpen] = useState(null); // { stopId, actId }
 
-    // Preferences state
     const [tripDays, setTripDays] = useState(
         itinerary.stops ? Math.max(3, itinerary.stops.length * 2 + 1) : 5
     );
@@ -30,7 +38,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         const fetchActivities = async () => {
             setLoading(true);
             const acts = {};
-            // Simulate API delay
             await new Promise(r => setTimeout(r, 400));
 
             for (const stop of itinerary.stops) {
@@ -50,7 +57,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         fetchActivities();
     }, [itinerary, apiBase]);
 
-    // Build the day plan from selected activities
     const buildDayPlan = () => {
         const days = [];
         let globalDay = 1;
@@ -95,7 +101,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
         return days;
     };
 
-    // Handlers
     const removeActivity = (stopId, actId) => {
         const act = (activitiesByStop[stopId] || []).find(a => a.id === actId);
         const price = act ? act.price : 0;
@@ -157,10 +162,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
     }
 
     return (
-        // 1. CHANGED: Enhanced background with a specific gradient to create depth and contrast
         <div className="relative min-h-screen bg-slate-100 text-slate-900 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
 
-            {/* 2. CHANGED: Fixed gradient background layer + ambient orbs */}
             <div className="fixed inset-0 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 z-0 pointer-events-none" />
             <div className="fixed top-[-20%] right-[-10%] w-[800px] h-[800px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none z-0" />
             <div className="fixed bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-rose-500/5 rounded-full blur-[100px] pointer-events-none z-0" />
@@ -223,12 +226,10 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                     {/* LEFT COLUMN: Timeline */}
                     <div className="lg:col-span-8">
                         <div className="space-y-0 relative">
-                            {/* Vertical Timeline Line */}
                             <div className="absolute left-[27px] top-4 bottom-10 w-0.5 bg-slate-300 z-0"></div>
 
                             {dayPlan.map((dayInfo, dayIdx) => {
                                 const showCityHeader = dayIdx === 0 || dayPlan[dayIdx - 1]?.city !== dayInfo.city;
-                                // Calculate city index (1, 2, 3...)
                                 const cityIndex = itinerary.stops.findIndex(s => s.tbo_id === dayInfo.stopId) + 1;
 
                                 return (
@@ -239,10 +240,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                         transition={{ delay: dayIdx * 0.1 }}
                                         className="relative z-10 pb-12"
                                     >
-                                        {/* 3. CHANGED: City Header with Numbered Badge */}
                                         {showCityHeader && (
                                             <div className="flex items-center gap-5 mb-8 -ml-1">
-                                                {/* Bold Numbered Badge */}
                                                 <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/20 flex items-center justify-center shrink-0 z-20 font-black text-xl border-4 border-slate-100 ring-1 ring-slate-900/5">
                                                     {cityIndex.toString().padStart(2, '0')}
                                                 </div>
@@ -254,16 +253,13 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                         )}
 
                                         <div className="pl-[70px] relative">
-                                            {/* Day Indicator */}
                                             <div className="absolute -left-[42px] top-0 flex flex-col items-center">
                                                 <div className="w-3.5 h-3.5 bg-indigo-600 rounded-full ring-4 ring-slate-100 shadow-sm"></div>
                                                 <span className="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400 -rotate-90 origin-center whitespace-nowrap w-20">Day {dayInfo.day}</span>
                                             </div>
 
-                                            {/* Events List */}
                                             <div className="space-y-4">
                                                 {dayInfo.events.map((evt, eIdx) => {
-                                                    // Transit/Leisure cards
                                                     if (evt.type === "transit" || evt.type === "leisure") {
                                                         return (
                                                             <div key={`evt-${eIdx}`} className="bg-white/50 border border-slate-200/80 rounded-xl p-4 flex items-center gap-4 hover:bg-white hover:shadow-md transition-all duration-200">
@@ -278,11 +274,12 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                         );
                                                     }
 
-                                                    // ACTIVITY CARD
-                                                    const actImgIdx = (activitiesByStop[evt.stopId] || []).findIndex(a => a.id === evt.id);
-                                                    const bgImg = ACTIVITY_IMAGES[(actImgIdx >= 0 ? actImgIdx : eIdx) % ACTIVITY_IMAGES.length];
+                                                    // ACTIVITY CARD — uses getImageForActivity (kiran3rd) for context-aware images
+                                                    const bgImg = getImageForActivity(evt);
                                                     const isSwapOpen = swapMenuOpen?.stopId === evt.stopId && swapMenuOpen?.actId === evt.id;
-                                                    const alternatives = (activitiesByStop[evt.stopId] || []).filter(a => !(selectedActivities[evt.stopId] || []).includes(a.id));
+                                                    const alternatives = (activitiesByStop[evt.stopId] || []).filter(
+                                                        a => !(selectedActivities[evt.stopId] || []).includes(a.id)
+                                                    );
 
                                                     return (
                                                         <motion.div
@@ -321,6 +318,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                                 Swap Activity
                                                                             </button>
                                                                         )}
+                                                                        {/* Remove button — from kiran4th (labeled, cleaner) */}
                                                                         <button
                                                                             onClick={() => removeActivity(evt.stopId, evt.id)}
                                                                             className="text-xs font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-slate-500 border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors ml-auto"
@@ -331,7 +329,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                 </div>
                                                             </div>
 
-                                                            {/* Swap Drawer */}
+                                                            {/* Swap Drawer — animated, from kiran4th */}
                                                             <AnimatePresence>
                                                                 {isSwapOpen && (
                                                                     <motion.div
@@ -345,7 +343,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                             <div className="grid grid-cols-1 gap-2">
                                                                                 {alternatives.map((alt, altIdx) => {
                                                                                     const diff = alt.price - evt.price;
-                                                                                    const altImg = ACTIVITY_IMAGES[altIdx % ACTIVITY_IMAGES.length];
+                                                                                    // Use getImageForActivity for contextual images in swap drawer too
+                                                                                    const altImg = getImageForActivity(alt);
                                                                                     return (
                                                                                         <button
                                                                                             key={alt.id}
@@ -356,12 +355,14 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                                                                             <div className="flex-1">
                                                                                                 <div className="flex justify-between">
                                                                                                     <span className="text-sm font-bold text-slate-800 group-hover/alt:text-indigo-600">{alt.name}</span>
-                                                                                                    <span className={`text-xs font-bold ${diff > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{diff > 0 ? `+₹${diff}` : diff < 0 ? `-₹${Math.abs(diff)}` : 'Same Price'}</span>
+                                                                                                    <span className={`text-xs font-bold ${diff > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                                                                        {diff > 0 ? `+₹${diff.toLocaleString()}` : diff < 0 ? `-₹${Math.abs(diff).toLocaleString()}` : 'Same Price'}
+                                                                                                    </span>
                                                                                                 </div>
                                                                                                 <span className="text-xs text-slate-500 line-clamp-1">{alt.description}</span>
                                                                                             </div>
                                                                                         </button>
-                                                                                    )
+                                                                                    );
                                                                                 })}
                                                                             </div>
                                                                         </div>
@@ -458,7 +459,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                     </div>
                 </div>
 
-                {/* BOTTOM: Discovery Deck */}
+                {/* BOTTOM: Discovery Deck — kiran4th layout (4-column grid with hover overlay) */}
                 <div className="mt-20 border-t border-slate-200/60 pt-12 mb-20 relative z-10">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                         <div>
@@ -472,7 +473,8 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {availableActivities.map((act) => {
-                            const bgImg = ACTIVITY_IMAGES[act.imgIdx % ACTIVITY_IMAGES.length];
+                            // Use getImageForActivity for contextual images in discovery deck too
+                            const bgImg = getImageForActivity(act);
                             return (
                                 <motion.div
                                     key={act.id}
@@ -487,7 +489,6 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                                             <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md px-2 py-0.5 rounded mb-1 inline-block border border-white/10">{act.city}</span>
                                             <p className="text-lg font-bold">₹{act.price.toLocaleString()}</p>
                                         </div>
-                                        {/* Add Overlay */}
                                         <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
                                             <span className="bg-white text-indigo-900 font-bold px-4 py-2 rounded-full transform scale-90 group-hover:scale-100 transition-transform shadow-lg">
                                                 + Add to Trip
