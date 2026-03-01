@@ -311,6 +311,7 @@ export default function DestinationSelectionScreen({
     allItineraries = [],
     originCity,
     travelMonth,
+    durationDays,
     routeJustification,
     onBack,
     onBuildItinerary,
@@ -365,8 +366,6 @@ export default function DestinationSelectionScreen({
         onBuildItinerary(activePrimary, selectedPlaces);
         setBuilding(false);
     }, [activePrimary, selectedPlaces, onBuildItinerary]);
-
-    const estimatedDays = Math.max(2, (1 + selectedPlaces.length) * 2);
 
     return (
         <div className="min-h-screen bg-[#FAFAFA] text-gray-900 font-sans pb-36">
@@ -586,7 +585,7 @@ export default function DestinationSelectionScreen({
                                     <div className="h-8 w-px bg-white/10 hidden sm:block" />
                                     <div className="flex flex-col">
                                         <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Est. Duration</span>
-                                        <span className="text-sm font-bold text-white">~{estimatedDays} days</span>
+                                        <span className="text-sm font-bold text-white">{durationDays || '~5'} days</span>
                                     </div>
                                 </>
                             )}

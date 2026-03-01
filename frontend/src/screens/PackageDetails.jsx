@@ -337,7 +337,7 @@ export default function PackageDetails({ pkg, itinerary, initialSelectedActiviti
                         </span>
                     </div>
                     <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-[1.1] mb-6 drop-shadow-sm">
-                        Your curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">journey map.</span>
+                        Your Curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Journey Map.</span>
                     </h1>
                     <p className="text-lg text-slate-600 font-medium max-w-2xl leading-relaxed">
                         We've organized your selected activities into a cohesive timeline. Review your daily flow, swap experiences, or add new discoveries below.

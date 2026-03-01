@@ -81,8 +81,8 @@ export default function PackagePresentation({ packages, itinerary, onBack, onSel
                             >
                                 {/* 2. CHANGED: Massively upgraded the baseline shadows (shadow-xl shadow-slate-300/70) so cards heavily detach from the background even before hover */}
                                 <div className={`relative w-full h-full rounded-[28px] transition-all duration-300 ease-out flex flex-col group transform-gpu ${isRec
-                                        ? 'lg:-translate-y-4 scale-[1.04] hover:scale-[1.10] hover:-translate-y-8 shadow-[0_20px_50px_-12px_rgba(99,102,241,0.4)] hover:shadow-[0_40px_80px_-10px_rgba(99,102,241,0.6)] bg-white ring-2 ring-indigo-500/50'
-                                        : 'scale-100 hover:scale-[1.06] hover:-translate-y-4 border border-slate-200 shadow-xl shadow-slate-300/70 hover:shadow-2xl hover:shadow-slate-400/80 hover:border-slate-300 bg-white'
+                                    ? 'lg:-translate-y-4 scale-[1.04] hover:scale-[1.10] hover:-translate-y-8 shadow-[0_20px_50px_-12px_rgba(99,102,241,0.4)] hover:shadow-[0_40px_80px_-10px_rgba(99,102,241,0.6)] bg-white ring-2 ring-indigo-500/50'
+                                    : 'scale-100 hover:scale-[1.06] hover:-translate-y-4 border border-slate-200 shadow-xl shadow-slate-300/70 hover:shadow-2xl hover:shadow-slate-400/80 hover:border-slate-300 bg-white'
                                     }`}>
 
                                     {/* Floating Premium Badge */}
@@ -103,11 +103,19 @@ export default function PackagePresentation({ packages, itinerary, onBack, onSel
                                             <p className="text-slate-600 text-sm leading-relaxed mb-6 h-10 line-clamp-2 pr-4">{pkg.description}</p>
 
                                             {/* Stylized Price */}
-                                            <div className="mb-8 flex items-baseline gap-1.5 border-b border-slate-200 pb-6">
+                                            <div className="mb-8 flex items-baseline gap-1.5 border-b border-slate-200 pb-6 relative">
                                                 <span className={`text-[2.75rem] font-black tracking-tighter transition-colors duration-300 ${isRec ? 'text-transparent bg-clip-text bg-gradient-to-br from-slate-900 to-indigo-900 group-hover:from-indigo-600 group-hover:to-purple-600' : 'text-slate-900 group-hover:text-indigo-600'}`}>
                                                     ₹{Math.round(pkg.total_price || 0).toLocaleString()}
                                                 </span>
                                                 <span className="text-slate-500 font-bold text-sm">/pp</span>
+                                                {pkg.within_budget === false && (
+                                                    <div className="absolute top-2 right-0">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-100 text-[9px] font-black uppercase tracking-wider shadow-sm">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                                                            Over Budget
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="space-y-4 flex-grow mb-10">

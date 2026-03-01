@@ -62,7 +62,7 @@ export default function App() {
   const [activeVibes, setActiveVibes] = useState([])
 
   useEffect(() => {
-    const saved = localStorage.getItem('vibeTravel_recentSearches')
+    const saved = localStorage.getItem('visionVoyage_recentSearches')
     if (saved) setRecentSearches(JSON.parse(saved))
   }, [])
 
@@ -77,7 +77,7 @@ export default function App() {
     if (!query?.trim()) return
     const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 10)
     setRecentSearches(updated)
-    localStorage.setItem('vibeTravel_recentSearches', JSON.stringify(updated))
+    localStorage.setItem('visionVoyage_recentSearches', JSON.stringify(updated))
   }
 
   // ── Search handler ────────────────────────────────────────────────────────
@@ -288,9 +288,9 @@ export default function App() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
               <span className="text-white font-black text-sm">V</span>
             </div>
-            <span className="font-bold text-lg text-gray-900">
-              VibeTravel <span className="text-blue-500 font-normal text-base">AI</span>
-            </span>
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              VisionVoyage <span className="text-blue-500 font-normal text-base">AI</span>
+            </h1>
           </button>
           <div className="hidden md:flex items-center gap-6 text-sm text-gray-500 font-medium">
             <button onClick={handleReset} className="hover:text-gray-900 transition-colors">Home</button>
@@ -349,6 +349,7 @@ export default function App() {
             allItineraries={results}
             originCity={originCity}
             travelMonth={travelMonth}
+            durationDays={durationDays}
             routeJustification={routeJustification}
             onBack={handleDestinationBack}
             onBuildItinerary={handleBuildItinerary}

@@ -1,5 +1,5 @@
 """
-main.py — FastAPI backend for VibeTravel AI Travel Platform.
+main.py — FastAPI backend for VisionVoyage AI Travel Platform.
 
 Endpoints:
   POST /itineraries    — Image-based multi-city itinerary generation (original)
@@ -58,7 +58,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="VibeTravel API", version="2.0.0")
+app = FastAPI(title="VisionVoyage API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,

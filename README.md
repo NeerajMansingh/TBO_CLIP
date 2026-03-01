@@ -1,8 +1,8 @@
-# VibeTravel ✈️📸
+# VisionVoyage ✈️📸
 
-VibeTravel is an AI-powered travel discovery app. Simply upload an aesthetic travel photo you love, and our AI (CLIP embeddings + ChromaDB) will match the visual vibe to a verified destination in India!
+VisionVoyage is an AI-powered travel discovery app. Simply upload an aesthetic travel photo you love, and our AI (CLIP embeddings + ChromaDB) will match the visual vibe to a verified destination in India!
 
-We then use the **TBO API** to find real-time hotel availability at your destination, and **Google Gemini** to chat with you about the location and help you book your perfect stay.
+We then use the **TBO API** to find real-time hotel availability at your destination, and **Google Gemini** to chat with you about the location and help you curate and book your perfect stay.
 
 ---
 
@@ -29,11 +29,11 @@ Before you can run this app, your computer needs to understand Python (for the b
 
 ### Step 2: Set Up the Backend (Python)
 
-The backend handles the AI matching and connects to the TBO Hotel API.
+The backend handles the AI image matching and connects to the TBO Hotel API & Gemini LLMs.
 
-1. **Open your terminal** (Command Prompt on Windows, Terminal on Mac/Linux) and navigate to the project folder:
+1. **Open your terminal** (Command Prompt on Windows, Terminal on Mac/Linux) and navigate to the project backend folder:
    ```bash
-   cd path/to/VibeTravel/backend
+   cd path/to/VisionVoyage/backend
    ```
 
 2. **Create a Virtual Environment** (This keeps all your Python packages organized in one folder):
@@ -59,32 +59,39 @@ The backend handles the AI matching and connects to the TBO Hotel API.
    *(You should now see `(venv)` at the beginning of your terminal line).*
 
 4. **Install the Required Packages**:
+   The backend relies on FastAPI, ChromaDB, Sentence-Transformers (for CLIP), and Gemini.
    ```bash
    pip install -r requirements.txt
    ```
    *(This might take a few minutes as it downloads large AI libraries like PyTorch and CLIP).*
 
-5. **Configure API Keys (`.env` file)**:
+5. **Set Up the Destination Images**:
+   For the AI to match images correctly, the backend must have a library of reference images.
+   - Ensure the `backend/destinations/` folder is populated with subfolders of destinations (e.g., `goa`, `manali`).
+   - Each folder should contain images like `1.jpg`, `2.jpg`, etc.
+   - If this folder is missing, run one of the provided download scripts (e.g., `python download_diverse_photos_20.py`) to generate sample imagery.
+
+6. **Configure API Keys (`.env` file)**:
    - Inside the `backend/` folder, create a new file named exactly `.env` (don't forget the dot).
    - Add your API details inside:
      ```env
      GEMINI_API_KEY=your_google_gemini_api_key_here
      
-     # TBO API Credentials (Optional - app will use Mock Data if these fail)
+     # TBO API Credentials (Optional - app will intelligently invoke fake_tbo as a fallback if omitted)
      TBO_API_USER=YourUsername
      TBO_API_PASSWORD=YourPassword
      TBO_B2B_USER=YourUsername
      TBO_B2B_PASSWORD=YourPassword
      ```
 
-6. **Initialize the AI Brain**:
-   Before running the app for the very first time, you must process the photos into AI numbers (embeddings). Run these **once**:
+7. **Initialize the AI Brain**:
+   Before running the app for the very first time, you must process the destination photos into AI numerics (embeddings) and load them into Chroma DB. **Run these once**:
    ```bash
    python generate_embeddings.py
    python load_chromadb.py
    ```
 
-7. **Start the Backend Server**:
+8. **Start the Backend Server**:
    ```bash
    uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
@@ -94,15 +101,16 @@ The backend handles the AI matching and connects to the TBO Hotel API.
 
 ### Step 3: Set Up the Frontend (React / Vite)
 
-The frontend is the beautiful user interface you see in your browser.
+The frontend is the React-based user interface connected to the backend APIs.
 
 1. **Open a SECOND, NEW terminal window** (leave the backend running in the first one).
 2. Navigate to the frontend folder:
    ```bash
-   cd path/to/VibeTravel/frontend
+   cd path/to/VisionVoyage/frontend
    ```
 
 3. **Install JavaScript Dependencies**:
+   The frontend utilizes React, Framer Motion, TailwindCSS, and Lucide React.
    ```bash
    npm install
    ```
@@ -119,10 +127,11 @@ The frontend is the beautiful user interface you see in your browser.
 ---
 
 ### 🎉 You're Done!
-You should now see the VibeTravel upload screen. Upload an aesthetic landscape photo, enter a budget (e.g., 30000), and let the AI find your perfect match!
+You should now see the VisionVoyage upload screen. Upload an aesthetic landscape photo, adjust your constraints like Budget and Duration, and let the AI find your perfect match!
 
 ### Troubleshooting
 
 - **"Command not found: python"**: Try typing `python3` instead of `python`. If that fails, Python was not installed correctly or not added to your system PATH.
 - **"npm is not recognized"**: You need to install Node.js (see Step 1), or you forgot to restart your terminal after installing Node.js.
+- **"No such file or directory: 'destinations'"**: You skipped setting up the destination images folder. AI needs images to analyze visual similarity!
 - **App matches perfectly but chat crashes**: Ensure your `.env` file exists in the backend folder and contains a valid `GEMINI_API_KEY`.

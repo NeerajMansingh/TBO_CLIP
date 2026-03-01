@@ -1,5 +1,5 @@
 """
-gemini_utils.py — All Gemini API interactions for VibeTravel.
+gemini_utils.py — All Gemini API interactions for VisionVoyage.
 Handles match explanation generation, conversation management,
 NLP query parsing, and structured itinerary modification via chat.
 """
