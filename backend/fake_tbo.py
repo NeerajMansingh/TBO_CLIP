@@ -155,15 +155,17 @@ ACTIVITIES_MAP: dict[str, list[dict]] = {
 
 
 def get_activities_for_destination(tbo_id: str) -> list[dict]:
-    dest = DESTINATION_MAP.get(tbo_id)
-    if not dest:
-        return []
-        
     if tbo_id in ACTIVITIES_MAP:
         return ACTIVITIES_MAP[tbo_id]
+
+    dest = DESTINATION_MAP.get(tbo_id)
+    if dest:
+        name = dest["name"]
+    else:
+        # Handle LOCAL_ prefixed IDs (e.g. LOCAL_SUNDERBANS → Sunderbans)
+        name = tbo_id.replace("LOCAL_", "").replace("_", " ").title()
         
-    # Generic fallback
-    name = dest["name"]
+    # Generic fallback activities for any destination
     return [
         {"id": f"Ac_{tbo_id}_01", "name": f"Highlights Tour of {name}", "price": 1500, "duration": "Half Day", "description": f"Discover the most iconic landmarks and hidden gems of {name} with a knowledgeable local guide who brings the city's story alive."},
         {"id": f"Ac_{tbo_id}_02", "name": f"Local Cuisine Tasting", "price": 2000, "duration": "Evening", "description": f"Savour the authentic flavours of {name} on a guided food trail. Sample street delicacies, traditional dishes, and local sweets at handpicked eateries."},

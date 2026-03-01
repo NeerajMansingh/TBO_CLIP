@@ -13,18 +13,18 @@ const API_BASE = 'http://localhost:8000'
 
 // Curated client-side destination pool for vibe refinement fallback
 const DESTINATION_POOL = [
-  { id: 'D1', name: 'Rishikesh', image_url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=1200', tags: ['ADVENTURE', 'RAFTING', 'SPIRITUAL'], match_score: 93, flight_price: 9500, hotel_price: 12000, vibes: ['More Adventure', 'More Nature'] },
-  { id: 'D2', name: 'Hampi', image_url: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?q=80&w=1200', tags: ['HERITAGE', 'RUINS', 'OFFBEAT'], match_score: 87, flight_price: 5500, hotel_price: 4500, vibes: ['Stricter Budget', 'More Nature'] },
-  { id: 'D3', name: 'Udaipur', image_url: 'https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=1200', tags: ['LUXURY', 'HERITAGE', 'ROMANCE'], match_score: 95, flight_price: 11000, hotel_price: 55000, vibes: ['More Luxury', 'More Couple Focus'] },
-  { id: 'D4', name: 'Coorg', image_url: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=1200', tags: ['NATURE', 'COFFEE', 'TREKKING'], match_score: 88, flight_price: 10000, hotel_price: 22000, vibes: ['More Nature', 'More Adventure', 'Family Friendly'] },
-  { id: 'D5', name: 'Jaisalmer', image_url: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=1200', tags: ['DESERT', 'GOLDEN', 'CULTURE'], match_score: 91, flight_price: 14000, hotel_price: 18000, vibes: ['More Adventure', 'More Luxury', 'More Couple Focus'] },
-  { id: 'D6', name: 'Andaman Islands', image_url: 'https://images.unsplash.com/photo-1590523277543-a94d2e4eb00b?q=80&w=1200', tags: ['BEACH', 'SCUBA', 'TROPICAL'], match_score: 96, flight_price: 22000, hotel_price: 30000, vibes: ['More Adventure', 'Beachfront', 'More Couple Focus'] },
-  { id: 'D7', name: 'Leh-Ladakh', image_url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=1200', tags: ['ALTITUDE', 'MONASTERY', 'ADVENTURE'], match_score: 94, flight_price: 19000, hotel_price: 25000, vibes: ['More Adventure', 'Mountain Views', 'More Nature'] },
-  { id: 'D8', name: 'Alleppey', image_url: 'https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=1200', tags: ['BACKWATERS', 'HOUSEBOAT', 'SERENE'], match_score: 86, flight_price: 14000, hotel_price: 28000, vibes: ['More Couple Focus', 'Family Friendly', 'Beachfront'] },
-  { id: 'D9', name: 'Goa', image_url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=1200', tags: ['BEACH', 'PARTY', 'NIGHTLIFE'], match_score: 82, flight_price: 10000, hotel_price: 25000, vibes: ['Beachfront', 'More Luxury', 'City Vibes', 'Stricter Budget'] },
-  { id: 'D10', name: 'Varanasi', image_url: 'https://images.unsplash.com/photo-1561361058-c24e0cb36c08?q=80&w=1200', tags: ['SPIRITUAL', 'CULTURAL', 'HERITAGE'], match_score: 88, flight_price: 8000, hotel_price: 10000, vibes: ['Stricter Budget', 'City Vibes', 'Family Friendly'] },
-  { id: 'D11', name: 'Manali', image_url: 'https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=1200', tags: ['SNOW', 'MOUNTAINS', 'HONEYMOON'], match_score: 90, flight_price: 13000, hotel_price: 20000, vibes: ['More Adventure', 'More Couple Focus', 'Mountain Views'] },
-  { id: 'D12', name: 'Ooty', image_url: 'https://images.unsplash.com/photo-1622279457486-7e72a7c17e55?q=80&w=1200', tags: ['HILLS', 'NATURE', 'FAMILY'], match_score: 83, flight_price: 8500, hotel_price: 14000, vibes: ['Family Friendly', 'More Nature', 'Stricter Budget'] },
+  { id: 'RISHIKESH_FAKE_024', name: 'Rishikesh', image_url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=1200', tags: ['ADVENTURE', 'RAFTING', 'SPIRITUAL'], match_score: 93, flight_price: 9500, hotel_price: 12000, vibes: ['More Adventure', 'More Nature'] },
+  { id: 'HAMPI_FAKE_014', name: 'Hampi', image_url: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?q=80&w=1200', tags: ['HERITAGE', 'RUINS', 'OFFBEAT'], match_score: 87, flight_price: 5500, hotel_price: 4500, vibes: ['Stricter Budget', 'More Nature'] },
+  { id: 'UDAIPUR_FAKE_022', name: 'Udaipur', image_url: 'https://images.unsplash.com/photo-1585136917228-a4f62be0e7c7?q=80&w=1200', tags: ['LUXURY', 'HERITAGE', 'ROMANCE'], match_score: 95, flight_price: 11000, hotel_price: 55000, vibes: ['More Luxury', 'More Couple Focus'] },
+  { id: 'COORG_FAKE_008', name: 'Coorg', image_url: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=1200', tags: ['NATURE', 'COFFEE', 'TREKKING'], match_score: 88, flight_price: 10000, hotel_price: 22000, vibes: ['More Nature', 'More Adventure', 'Family Friendly'] },
+  { id: 'JAISALMER_FAKE_020', name: 'Jaisalmer', image_url: 'https://images.unsplash.com/photo-1482938289607-e9573fc25ebb?q=80&w=1200', tags: ['DESERT', 'GOLDEN', 'CULTURE'], match_score: 91, flight_price: 14000, hotel_price: 18000, vibes: ['More Adventure', 'More Luxury', 'More Couple Focus'] },
+  { id: 'ANDAMAN_FAKE_002', name: 'Andaman Islands', image_url: 'https://images.unsplash.com/photo-1590523277543-a94d2e4eb00b?q=80&w=1200', tags: ['BEACH', 'SCUBA', 'TROPICAL'], match_score: 96, flight_price: 22000, hotel_price: 30000, vibes: ['More Adventure', 'Beachfront', 'More Couple Focus'] },
+  { id: 'LEH_FAKE_023', name: 'Leh-Ladakh', image_url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=1200', tags: ['ALTITUDE', 'MONASTERY', 'ADVENTURE'], match_score: 94, flight_price: 19000, hotel_price: 25000, vibes: ['More Adventure', 'Mountain Views', 'More Nature'] },
+  { id: 'ALLEPPEY_FAKE_019', name: 'Alleppey', image_url: 'https://images.unsplash.com/photo-1621689444225-0698c4af00f1?q=80&w=1200', tags: ['BACKWATERS', 'HOUSEBOAT', 'SERENE'], match_score: 86, flight_price: 14000, hotel_price: 28000, vibes: ['More Couple Focus', 'Family Friendly', 'Beachfront'] },
+  { id: 'GOA_FAKE_001', name: 'Goa', image_url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=1200', tags: ['BEACH', 'PARTY', 'NIGHTLIFE'], match_score: 82, flight_price: 10000, hotel_price: 25000, vibes: ['Beachfront', 'More Luxury', 'City Vibes', 'Stricter Budget'] },
+  { id: 'VARANASI_FAKE_013', name: 'Varanasi', image_url: 'https://images.unsplash.com/photo-1561361058-c24e0cb36c08?q=80&w=1200', tags: ['SPIRITUAL', 'CULTURAL', 'HERITAGE'], match_score: 88, flight_price: 8000, hotel_price: 10000, vibes: ['Stricter Budget', 'City Vibes', 'Family Friendly'] },
+  { id: 'MANALI_FAKE_006', name: 'Manali', image_url: 'https://images.unsplash.com/photo-1621244249243-f5aa7c5f80bf?q=80&w=1200', tags: ['SNOW', 'MOUNTAINS', 'HONEYMOON'], match_score: 90, flight_price: 13000, hotel_price: 20000, vibes: ['More Adventure', 'More Couple Focus', 'Mountain Views'] },
+  { id: 'OOTY_FAKE_025', name: 'Ooty', image_url: 'https://images.unsplash.com/photo-1622279457486-7e72a7c17e55?q=80&w=1200', tags: ['HILLS', 'NATURE', 'FAMILY'], match_score: 83, flight_price: 8500, hotel_price: 14000, vibes: ['Family Friendly', 'More Nature', 'Stricter Budget'] },
 ]
 
 export default function App() {
@@ -184,58 +184,57 @@ export default function App() {
 
   // ── Navigation helpers ────────────────────────────────────────────────────
   const handleSelectItinerary = (itinerary) => {
-        setSelectedPrimaryItinerary(itinerary)
-        setAppState('destination-select')
-      }
+    setSelectedPrimaryItinerary(itinerary)
+    setAppState('destination-select')
+  }
 
-      const handleDestinationBack = () => {
-        setAppState('home')
-        setResults([])
-        setImagePreview(null)
-        setChatInput('')
-      }
+  const handleDestinationBack = () => {
+    setAppState('home')
+    setResults([])
+    setImagePreview(null)
+    setChatInput('')
+  }
 
-      // Called when user clicks "Build My Itinerary" on DestinationSelectionScreen.
-      // Merges the primary itinerary with any selected nearby places as bonus stops.
-      const handleBuildItinerary = (primaryItinerary, selectedNearbyPlaces) => {
-        // Build a merged itinerary: primary stop(s) + nearby places as lightweight stops
-        const nearbyStops = selectedNearbyPlaces.map(place => ({
-          destination: place.name,
-          tbo_id: null, // nearby places don't have TBO IDs
-          photo: null,
-          price_per_person: 0,
-          hotels: [],
-          tagline: place.description?.slice(0, 120) || '',
-          is_nearby: true,
-          distance_km: place.distance_km,
-          category: place.category,
-          visit_duration: place.visit_duration,
-        }))
+  // Called when user clicks "Build My Itinerary" on DestinationSelectionScreen.
+  // Merges the primary itinerary with any selected nearby places as bonus stops.
+  const handleBuildItinerary = (primaryItinerary, selectedNearbyPlaces) => {
+    // Build a merged itinerary: primary stop(s) + nearby places as lightweight stops
+    const nearbyStops = selectedNearbyPlaces.map(place => ({
+      destination: place.name,
+      tbo_id: `LOCAL_${place.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`,
+      photo: null,
+      price_per_person: 0,
+      hotels: [],
+      tagline: place.description?.slice(0, 120) || '',
+      is_nearby: true,
+      distance_km: place.distance_km,
+      category: place.category,
+      visit_duration: place.visit_duration,
+    }))
 
-        // Keep ONLY the first stop (primary destination) from the generated itinerary
-        const primaryStop = primaryItinerary.stops ? [primaryItinerary.stops[0]] : []
+    // Keep ONLY the first stop (primary destination) from the generated itinerary
+    const primaryStop = primaryItinerary.stops ? [primaryItinerary.stops[0]] : []
 
-        const merged = {
-          ...primaryItinerary,
-          stops: [...primaryStop, ...nearbyStops],
-          stop_count: primaryStop.length + nearbyStops.length,
-          total_price:
-            (primaryStop[0]?.price_per_person || 0) + (primaryItinerary.total_price || 0),
-          label:
-            nearbyStops.length > 0
-              ? `${primaryItinerary.label} + ${nearbyStops.length} Nearby`
-              : primaryItinerary.label,
-          conversation_opener:
-            primaryItinerary.conversation_opener ||
-            `Your customised ${primaryItinerary.region} itinerary is ready! You've added ${nearbyStops.length} nearby places. Ask me anything!`,
-          route_justification: `Your customized route (${[...primaryStop, ...nearbyStops]
-            .map(s => s.destination)
-            .join(' → ')}) has been assembled. This circuit minimizes travel time and maximizes exploration.`,
-        }
+    const merged = {
+      ...primaryItinerary,
+      stops: [...primaryStop, ...nearbyStops],
+      stop_count: primaryStop.length + nearbyStops.length,
+      total_price:
+        (primaryStop[0]?.price_per_person || 0) + (primaryItinerary.total_price || 0),
+      label:
+        nearbyStops.length > 0
+          ? `${primaryItinerary.label} + ${nearbyStops.length} Nearby`
+          : primaryItinerary.label,
+      conversation_opener:
+        primaryItinerary.conversation_opener ||
+        `Your customised ${primaryItinerary.region} itinerary is ready! You've added ${nearbyStops.length} nearby places. Ask me anything!`,
+      route_justification: `Your customized route (${[...primaryStop, ...nearbyStops]
+        .map(s => s.destination)
+        .join(' → ')}) has been assembled. This circuit minimizes travel time and maximizes exploration.`,
+    }
 
-        setSelectedItinerary(merged)
-        setAppState('plan')
-      }
+    setSelectedItinerary(merged)
+    setAppState('activities')
   }
 
   const handlePlanBack = () => setAppState('destination-select')
@@ -273,7 +272,7 @@ export default function App() {
     <div className="min-h-screen bg-hero text-gray-900 font-sans overflow-x-hidden">
 
       {/* Navbar — hidden in activity flow which have their own top bars */}
-      {!['activities', 'packages', 'package_details'].includes(appState) && (
+      {!['plan', 'activities', 'packages', 'package_details'].includes(appState) && (
         <nav className="navbar-light w-full px-6 py-4 flex justify-between items-center sticky top-0 z-40">
           <button onClick={handleReset} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-md">
@@ -342,6 +341,16 @@ export default function App() {
             routeJustification={routeJustification}
             onBack={handleDestinationBack}
             onBuildItinerary={handleBuildItinerary}
+          />
+        )}
+
+        {appState === 'plan' && selectedItinerary && (
+          <PlanView
+            itinerary={selectedItinerary}
+            sessionId={sessionId}
+            apiBase={API_BASE}
+            onBack={handlePlanBack}
+            onConfirm={() => setAppState('activities')}
           />
         )}
 

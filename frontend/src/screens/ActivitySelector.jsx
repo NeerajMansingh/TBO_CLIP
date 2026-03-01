@@ -29,6 +29,7 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
             const acts = {};
             const initialSels = {};
             for (const stop of itinerary.stops) {
+                if (!stop.tbo_id) continue;
                 try {
                     const res = await fetch(`${apiBase}/activities/${stop.tbo_id}`);
                     if (res.ok) {
@@ -148,8 +149,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                                     key={stop.tbo_id}
                                     onClick={() => setActiveTab(i)}
                                     className={`relative px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 cursor-pointer ${isActive
-                                            ? 'bg-gray-900 text-white shadow-lg shadow-gray-900/20'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        ? 'bg-gray-900 text-white shadow-lg shadow-gray-900/20'
+                                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
                                         }`}
                                 >
                                     {stop.destination}
@@ -184,8 +185,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                                 key={act.id}
                                 onClick={() => toggleActivity(currentStop.tbo_id, act.id)}
                                 className={`group relative flex rounded-2xl overflow-hidden cursor-pointer transition-all duration-400 ease-out bg-white border ${isSelected
-                                        ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#F9FAFB] border-indigo-200 shadow-[0_8px_30px_-10px_rgba(99,102,241,0.25)]'
-                                        : 'border-gray-200 hover:border-gray-300 hover:shadow-[0_8px_30px_-10px_rgba(0,0,0,0.08)]'
+                                    ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#F9FAFB] border-indigo-200 shadow-[0_8px_30px_-10px_rgba(99,102,241,0.25)]'
+                                    : 'border-gray-200 hover:border-gray-300 hover:shadow-[0_8px_30px_-10px_rgba(0,0,0,0.08)]'
                                     }`}
                             >
                                 {/* Left: Image */}
@@ -198,8 +199,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                                     />
                                     {/* Subtle overlay */}
                                     <div className={`absolute inset-0 transition-opacity duration-500 ${isSelected
-                                            ? 'bg-indigo-900/20'
-                                            : 'bg-gray-900/5 group-hover:bg-gray-900/10'
+                                        ? 'bg-indigo-900/20'
+                                        : 'bg-gray-900/5 group-hover:bg-gray-900/10'
                                         }`}></div>
 
                                     {/* Check indicator overlay */}
@@ -226,8 +227,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                                                 {act.duration}
                                             </span>
                                             <span className={`px-3 py-1 rounded-full text-xs font-bold transition-colors duration-300 ${isSelected
-                                                    ? 'bg-indigo-500 text-white'
-                                                    : 'bg-gray-100 text-gray-700 group-hover:bg-gray-200'
+                                                ? 'bg-indigo-500 text-white'
+                                                : 'bg-gray-100 text-gray-700 group-hover:bg-gray-200'
                                                 }`}>
                                                 ₹{act.price.toLocaleString()}
                                             </span>
@@ -251,8 +252,8 @@ export default function ActivitySelector({ itinerary, sessionId, apiBase, budget
                                             {isSelected ? '✓ Added to your trip' : 'Click to add'}
                                         </span>
                                         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${isSelected
-                                                ? 'bg-indigo-500 border-indigo-500'
-                                                : 'border-gray-300 group-hover:border-gray-400'
+                                            ? 'bg-indigo-500 border-indigo-500'
+                                            : 'border-gray-300 group-hover:border-gray-400'
                                             }`}>
                                             {isSelected && (
                                                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>

@@ -1220,33 +1220,23 @@ async def confirm_booking(request: ConfirmRequest):
 async def generate_packages(request: GeneratePackagesRequest):
     """
     Takes user's selected activities across stops and generates 3 package tiers.
+    Works even if the session has expired (e.g. after backend restart).
     """
     logger.info(f"POST /generate-packages | session={request.session_id}")
-    session = session_store.get_session(request.session_id)
-    validate_session_exists(session, request.session_id)
     
-    stops = session.get("itinerary_stops", [])
-    if not stops:
-        raise HTTPException(status_code=400, detail="No itinerary found in session")
-
-    base_flight_total = 0
-    base_hotel_total = 0
     activities_total = 0
     
-    for stop in stops:
-        flight_cost = stop.get("flight_min_fare", 0)
-        base_flight_total += flight_cost
-        
-        hotel_cost = max(0, stop.get("price_per_person", 0) - flight_cost)
-        base_hotel_total += hotel_cost
-        
-        selected_act_ids = request.selections.get(stop["tbo_id"], [])
-        avail_acts = get_activities_for_destination(stop["tbo_id"])
-        
+    for stop_tbo_id, selected_act_ids in request.selections.items():
+        avail_acts = get_activities_for_destination(stop_tbo_id)
         for act_id in selected_act_ids:
             act = next((a for a in avail_acts if a["id"] == act_id), None)
             if act:
                 activities_total += act["price"]
+
+    base_budget = request.budget or 100000
+    # Estimate flight + hotel from budget minus activities
+    base_flight_total = int(base_budget * 0.3)
+    base_hotel_total = int(base_budget * 0.4)
 
     backpacker_hotel = int(base_hotel_total * 0.6)
     balanced_hotel = base_hotel_total

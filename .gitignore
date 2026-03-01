@@ -23,6 +23,7 @@ backend/generate_200_embeddings_colab.ipynb
 
 # Destination photos (regeneratable with download script)
 backend/destinations/
+backend/destinations_archive/
 
 # Frontend
 frontend/node_modules/
